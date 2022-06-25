@@ -7,11 +7,122 @@ import pandas as pd
 
 import torch
 import gpytorch
-from botorch.acquisition import ExpectedImprovement
+from botorch.acquisition import AcquisitionFunction, ExpectedImprovement
 
 from .utils import forward_normalize, propose_randomly, cat_param_to_feat
 
+from copy import deepcopy
 
+class FeasibilityAwareGeneral(AcquisitionFunction):
+	''' Abstract feasibilty aware general purpose optimization acquisition function.
+	Compatible 
+
+	'''
+	def __init__(
+		self,
+		reg_model,
+		cla_model,
+		cla_likelihood,
+		general_parmeters,
+		param_space,
+		best_f,
+		feas_strategy,
+		feas_param,
+		infeas_ratio,
+		acqf_min_max,
+		use_p_feas_only=False,
+		objective=None,
+		maximize=False,
+		**kwargs,
+	) -> None:
+		super().__init__(reg_model, **kwargs)
+		self.best_f = best_f
+		self.reg_model = reg_model
+		self.cla_model = cla_model
+		self.cla_likelihood = cla_likelihood
+		self.general_parmeters = general_parmeters
+		self.param_space = param_space
+		self.feas_strategy = feas_strategy
+		self.feas_param = feas_param
+		self.infeas_ratio = infeas_ratio
+		self.acqf_min_max = acqf_min_max
+		self.use_p_feas_only = use_p_feas_only
+		self.maximize = maximize
+
+
+	def forward(self, X):
+		best_f = self.best_f.to(X)
+		X_sns = self.generate_s_n(X)
+		pred_mu_x, pred_sigma_x = [], [] 
+
+		for X_sn in X_sns:
+			posterior = self.reg_model.posterior(X_sn.double())
+			mu = posterior.mean
+			view_shape = mu.shape[:-2] if mu.shape[-2] == 1 else mu.shape[:-1]
+			mu = mu.view(view_shape)
+			sigma = posterior.variance.clamp_min(1e-9).sqrt().view(view_shape)
+			pred_mu_x.append(mu)
+			pred_sigma_x.append(sigma)
+
+		pred_mu_x = torch.stack(pred_mu_x) 
+		pred_sigma_x = torch.stack(pred_sigma_x)
+
+		mu_x = torch.mean(pred_mu_x, 0)
+		sigma_x = torch.mean(pred_sigma_x, 0) 
+
+		u = (mu_x - best_f.expand_as(mu_x)) / sigma_x 
+		if not self.maximize:
+			u = -u
+		normal = torch.distributions.Normal(torch.zeros_like(u), torch.ones_like(u))
+		ucdf = normal.cdf(u)
+		updf = torch.exp(normal.log_prob(u))
+		ei = sigma * (updf + u * ucdf)
+
+		return ei
+
+
+
+	def generate_s_n(self, X):
+		
+		X_sns = []
+		options_ = self.param_space[0].options
+		for option in options_:
+			feat = cat_param_to_feat(self.param_space[0], option)
+			X[:, :, :len(options_)] = torch.tensor(feat) 
+			X_sns.append(X)
+
+		X_sns = torch.stack(X_sns)
+
+		return X_sns
+
+
+
+
+	def compute_feas_post(self, X):
+		''' computes the posterior P(feasible|X)
+		Args:
+			X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
+		'''
+		with gpytorch.settings.cholesky_jitter(1e-1):
+			return self.cla_likelihood(self.cla_model(X.float().squeeze(1))).mean
+
+
+	def compute_combined_acqf(self, acqf, p_feas):
+		''' compute the combined acqusition function
+		'''
+		if self.feas_strategy == 'fwa':
+			return acqf * p_feas
+		elif self.feas_strategy == 'fca':
+			return acqf
+		elif self.feas_strategy == 'fia':
+			return ((1 - self.infeas_ratio)**self.feas_param * acqf) + ((self.infeas_ratio**self.feas_param)*p_feas)
+		elif 'naive-' in self.feas_strategy:
+			if self.use_p_feas_only:
+				return p_feas
+			else:
+				return acqf
+		else:
+			raise NotImplementedError
 
 
 
@@ -110,7 +221,7 @@ def get_batch_initial_conditions(
 		num_restarts (int): number of optimization restarts
 		batch_size (int): number of samples to recommend per ask/tell call (fixed to 1)
 		param_space (obj): Olympus parameter space object for the given problem
-		constraint_callable (callable): callable which specifies the constraint function
+		constraint_callable (list): list of callables which specifies the constraint function
 		num_chances (int):
 	Returns:
 		a torch.tensor with shape (num_restarts, batch_size, num_dims)
@@ -123,9 +234,22 @@ def get_batch_initial_conditions(
 
 	raw_samples = torch.tensor(raw_samples).view(raw_samples.shape[0], batch_size, raw_samples.shape[1])
 
-	constraint_vals = constraint_callable(raw_samples)
 
-	feas_ix = torch.where(constraint_vals>=0)[0]
+	constraint_vals = []
+	for constraint in constraint_callable:
+		constraint_val = constraint(raw_samples)
+		if len(constraint_val.shape)==1:
+			constraint_val = constraint_val.view(constraint_val.shape[0],1)
+		constraint_vals.append(constraint_val)
+
+
+	if len(constraint_vals)==2:
+		constraint_vals = torch.cat(constraint_vals, dim=1)
+		feas_ix = torch.where(torch.all(constraint_vals>=0, dim=1))[0]
+	elif len(constraint_vals)==1:
+		constraint_vals = constraint_vals[0]
+		feas_ix = torch.where(constraint_vals>=0)[0]
+
 
 	batch_initial_conditions = raw_samples[feas_ix, :, :]
 
@@ -152,7 +276,6 @@ def sample_around_x(raw_samples, constraint_callable):
 	''' draw samples around points which we already know are feasible by adding
 	some Gaussian noise to them
 	'''
-	print('original raw samples : ', raw_samples.shape)
 	tiled_raw_samples = raw_samples.tile((10, 1, 1))
 	means = deepcopy(tiled_raw_samples)
 	stds  = torch.ones_like(means)*0.1
@@ -162,9 +285,20 @@ def sample_around_x(raw_samples, constraint_callable):
 	# perturb_samples = torch.where(perturb_samples<0., 0., perturb_samples)
 	inputs = torch.cat((raw_samples, perturb_samples))
 
-	constraint_vals = constraint_callable(inputs)
+	constraint_vals = []
+	for constraint in constraint_callable:
+		constraint_val = constraint(inputs)
+		if len(constraint_val.shape)==1:
+			constraint_val = constraint_val.view(constraint_val.shape[0],1)
+		constraint_vals.append(constraint_val)
 
-	feas_ix = torch.where(constraint_vals>=0)[0]
+	if len(constraint_vals)==2:
+		constraint_vals = torch.cat(constraint_vals, dim=1)
+		feas_ix = torch.where(torch.all(constraint_vals>=0))[0]
+	elif len(constraint_vals)==1:
+		constraint_vals = torch.tensor(constraint_vals)
+		feas_ix = torch.where(constraint_vals>=0)[0]
+
 	batch_initial_conditions = inputs[feas_ix, :, :]
 
 	return batch_initial_conditions

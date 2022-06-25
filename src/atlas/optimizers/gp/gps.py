@@ -18,6 +18,7 @@ from gpytorch.kernels import ScaleKernel, RBFKernel, MaternKernel
 
 
 
+
 class ClassificationGP(ApproximateGP):
 	''' Variational GP for binary classification. Produces a latent distribution,
 	which is multivariate Gaussian, which is intended to be transfromed to a Bernoulli

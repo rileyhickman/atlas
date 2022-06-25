@@ -2,6 +2,8 @@
 
 import numpy as np
 import torch
+import itertools
+
 
 
 def infer_problem_type(param_space):
@@ -21,6 +23,56 @@ def infer_problem_type(param_space):
 		):
 		problem_type = 'mixed'
 	return problem_type
+
+
+def get_cat_dims(param_space):
+	dim = 0
+	cat_dims = []
+	for p in param_space:
+		if p.type == 'categorical':
+			# this will only work for OHE variables
+			d = np.arange(dim, dim+len(p.options))
+			cat_dims.extend(list(d))
+		else:
+			dim+=1
+
+	return cat_dims
+
+def get_fixed_features_list(param_space):
+	dim = 0
+	fixed_features_list = []
+	cat_dims = []
+	cat_params = []
+	for p in param_space:
+		if p.type == 'categorical':
+			dims = np.arange(dim, dim+len(p.options))
+			cat_dims.append(dims)
+			cat_params.append(p)
+		else:
+			dim+=1
+
+	param_options = [p.options for p in cat_params]
+	cart_product = list(itertools.product(*param_options))
+	cart_product = [list(elem) for elem in cart_product]
+
+	current_avail_feat  = []
+	current_avail_cat = []
+	for elem in cart_product:
+		# convert to ohe and add to currently available options
+		ohe = []
+		for val, obj in zip(elem, param_space):
+			ohe.append(cat_param_to_feat(obj, val))
+		current_avail_feat.append(np.concatenate(ohe))
+		current_avail_cat.append(elem)
+	
+	# make list
+	for feat in current_avail_feat:
+		fixed_features_list.append(
+			{ix:f for ix, f in enumerate(feat)}
+		)
+
+
+	return fixed_features_list
 
 
 

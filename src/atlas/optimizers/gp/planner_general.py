@@ -422,10 +422,6 @@ class BoTorchPlanner(CustomPlanner):
 			# get the approximate max and min of the acquisition function without the feasibility contribution
 			acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled)
 
-			# self.acqf = FeasibilityAwareEI(
-			# 	self.reg_model, self.cla_model, self.cla_likelihood, f_best_scaled,
-			# 	self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max,
-			# )
 
 			# general purpose acquisition function
 			self.acqf = FeasibilityAwareGeneral(
@@ -436,7 +432,6 @@ class BoTorchPlanner(CustomPlanner):
 
 			bounds = get_bounds(self.param_space, self.has_descriptors)
 
-			print('PROBLEM TYPE : ', self.problem_type)
 			choices_feat, choices_cat = None, None
 
 
@@ -503,6 +498,7 @@ class BoTorchPlanner(CustomPlanner):
 					batch_initial_conditions=batch_initial_conditions,
 				)
 
+
 			elif self.problem_type == 'mixed':
 
 				fixed_features_list = get_fixed_features_list(self.param_space)
@@ -518,11 +514,37 @@ class BoTorchPlanner(CustomPlanner):
 
 				)
 
-				print(results)
-				print(results.shape)
+
+				# prepare non functional parameters
+				X_sns = []
+				options_ = self.param_space[0].options
+
+				# functional parameters
+				# TODO: this is hardcoded to 
+				X_x = results[:, len(options_):][0]
+
+				for option in options_:
+					feat = cat_param_to_feat(self.param_space[0], option)
+					results[:, :len(options_)] = torch.tensor(feat) 
+					X_sns.append(deepcopy(results))
+
+				X_sns = torch.stack(X_sns)
+
+				posteriors = self.reg_model.posterior(X_sns)
+
+				alpha_s = posteriors.variance.clamp_min(1e-9).sqrt()
+
+				select_ix = torch.argmax(alpha_s).item()
+
+				cat_feat = torch.tensor(
+					cat_param_to_feat(self.param_space[0], self.param_space[0].options[select_ix])
+				)
+
+				# final parameter results to be returned
+				results = torch.cat([cat_feat, X_x])
+				results = results.view(1, results.shape[0])
+			
 				
-
-
 			elif self.problem_type == 'fully_categorical':
 				# need to implement the choices input, which is a
 				# (num_choices * d) torch.Tensor of the possible choices
