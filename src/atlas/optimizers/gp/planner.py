@@ -123,6 +123,7 @@ class BoTorchPlanner(CustomPlanner):
 		self.general_parmeters = general_parmeters
 		self.is_moo = is_moo
 
+
 		# check on the multi-objective optimization
 		if self.is_moo:
 			if tolerances is None:
@@ -406,11 +407,18 @@ class BoTorchPlanner(CustomPlanner):
 			# builds and fits the regression surrogate model
 			self.reg_model = self.build_train_regression_gp(self.train_x_scaled_reg, self.train_y_scaled_reg)
 
-			# build and train the classification surrogate model
-			self.cla_model, self.cla_likelihood = self.build_train_classification_gp(self.train_x_scaled_cla, self.train_y_scaled_cla)
+			if not 'naive-' in self.feas_strategy:
+				# build and train the classification surrogate model
+				self.cla_model, self.cla_likelihood = self.build_train_classification_gp(self.train_x_scaled_cla, self.train_y_scaled_cla)
 
-			self.cla_model.eval()
-			self.cla_likelihood.eval()
+				self.cla_model.eval()
+				self.cla_likelihood.eval()
+
+			else:
+				self.cla_model, self.cla_likelihood = None, None
+
+			print(self.known_constraints)
+			print(self.feas_strategy)
 
 
 			# get the incumbent point
@@ -438,9 +446,14 @@ class BoTorchPlanner(CustomPlanner):
 
 			print('PROBLEM TYPE : ', self.problem_type)
 			choices_feat, choices_cat = None, None
+			print(self.known_constraints)
+			print(self.feas_strategy)
 
 
 			if self.problem_type == 'fully_continuous':
+
+				print(self.known_constraints)
+				print(self.feas_strategy)
 
 				nonlinear_inequality_constraints = []
 				if callable(self.known_constraints):
@@ -491,6 +504,7 @@ class BoTorchPlanner(CustomPlanner):
 					# we dont have any constraints
 					nonlinear_inequality_constraints = None
 					batch_initial_conditions = None 
+
 
 
 				results, _ = optimize_acqf(
