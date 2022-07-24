@@ -20,11 +20,13 @@ from botorch.models.kernels.categorical import CategoricalKernel
 
 from botorch.fit import fit_gpytorch_model
 from botorch.optim import optimize_acqf, optimize_acqf_mixed, optimize_acqf_discrete
-from botorch.acquisition import ExpectedImprovement
+from botorch.acquisition import ExpectedImprovement, qExpectedImprovement, qNoisyExpectedImprovement
 
 import olympus
 from olympus.planners import CustomPlanner, AbstractPlanner
 from olympus import ParameterVector
+from olympus.scalarizers import Scalarizer
+from olympus.planners import Planner
 
 from botorch.models.gpytorch import GPyTorchModel
 from gpytorch.distributions import MultivariateNormal
@@ -34,7 +36,7 @@ from gpytorch.kernels import RBFKernel, ScaleKernel, MaternKernel
 from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
-from chimera import Chimera
+from atlas import Logger
 
 from atlas.optimizers.gp.utils import (
 	cat_param_to_feat,
@@ -53,7 +55,13 @@ from atlas.optimizers.gp.utils import (
 from atlas.optimizers.gp.gps import ClassificationGP, CategoricalSingleTaskGP
 
 
-from atlas.optimizers.gp.acqfs import FeasibilityAwareEI, FeasibilityAwareGeneral, get_batch_initial_conditions, create_available_options
+from atlas.optimizers.gp.acqfs import (
+	FeasibilityAwareEI, 
+	FeasibilityAwareQEI,
+	FeasibilityAwareGeneral, 
+	get_batch_initial_conditions, 
+	create_available_options,
+)
 
 
 
@@ -85,7 +93,7 @@ class BoTorchPlanner(CustomPlanner):
 	def __init__(
 		self,
 		goal='minimize',
-		feas_strategy='fwa',
+		feas_strategy='naive-0',
 		feas_param=0.2,
 		batch_size=1,
 		random_seed=None,
@@ -98,8 +106,11 @@ class BoTorchPlanner(CustomPlanner):
 		known_constraints=None,
 		general_parmeters=None,
 		is_moo=False,
-		tolerances=None,
-		absolutes=None,
+		value_space=None,
+		scalarizer_kind='Hypervolume',
+		# tolerances=None,
+		# absolutes=None,
+		moo_params={},
 		goals=None,
 		**kwargs,
 	):
@@ -122,30 +133,41 @@ class BoTorchPlanner(CustomPlanner):
 		self.known_constraints = known_constraints
 		self.general_parmeters = general_parmeters
 		self.is_moo = is_moo
+		self.value_space = value_space
+
+		self.scalarizer_kind = scalarizer_kind
+
+		self.moo_params = moo_params
+		self.goals = goals
 
 
-		# check on the multi-objective optimization
+		# check multiobjective stuff
 		if self.is_moo:
-			if tolerances is None:
-				print(f'[FATAL]: You must define Chimera tolerances for multiobjective optimization')
-				quit()
-			if absolutes is None:
-				print(f'[FATAL]: You must define absolutes for multiobjective optimization')
-				quit()
-			if goals is None:
-				print(f'[FATAL]: You must define goals for each objective in multiobjective optimization')
-				quit()
+			if self.goals is None:
+				message = f'You must individual goals for multiobjective optimization'
+				Logger.log(message, 'FATAL')
 
 			if self.goal == 'maximize':
-				print('f [WARNING]: Overall goal must be set to minimization for multiobjective optimization. Updating ...')
+				message = 'Overall goal must be set to minimization for multiobjective optimization. Updating ...'
+				Logger.log(message, 'WARNING')
 				self.goal = 'minimize'
 
-			self.tolerancs = tolerances
-			self.absolutes = absolutes
-			self.goals = goals
+			self.scalarizer = Scalarizer(
+				kind=self.scalarizer_kind, value_space=self.value_space, goals=self.goals, **self.moo_params
+			)
 
-			# intialize chimera
-			self.chimera = Chimera(tolerances=self.tolerances, absolutes=self.absolutes, goals=self.goals)
+
+		# treat the inital design arguments
+		if self.init_design_strategy == 'random':
+			self.init_design_planner = olympus.planners.RandomSearch(goal=self.goal)
+		elif self.init_design_strategy == 'sobol':
+			self.init_design_planner = olympus.planners.Sobol(goal=self.goal, budget=self.num_init_design)
+		elif self.init_design_strategy == 'lhs': 
+			self.init_design_planner = olympus.planners.LatinHypercube(goal=self.goal, budget=self.num_init_design)
+		else:
+			message = f'Initial design strategy {self.init_design_strategy} not implemented'
+			Logger.log(message, 'FATAL')
+
 
 
 	def build_train_classification_gp(self, train_x, train_y):
@@ -194,7 +216,6 @@ class BoTorchPlanner(CustomPlanner):
 		elif self.problem_type == 'mixed':
 			# TODO: implement a method to retrieve the categorical dimensions
 			cat_dims = get_cat_dims(self.param_space)
-			print('cat dims : ', cat_dims)
 			model = MixedSingleTaskGP(train_x, train_y, cat_dims=cat_dims)
 		elif self.problem_type == 'fully_categorical':
 			if self.has_descriptors:
@@ -252,8 +273,8 @@ class BoTorchPlanner(CustomPlanner):
 			# generate the regression dataset
 			params_reg = self._params[feas_ix].reshape(-1, 1)
 			train_y_reg = self._values[feas_ix, :]  # (num_feas_observations, num_objectives)
-			# scalarize the data using Chimera
-			train_y_reg = self.chimera.scalarize(train_y_reg).reshape(-1, 1) # (num_feas_observations, 1)
+			# scalarize the data 
+			train_y_reg = self.scalarizer.scalarize(train_y_reg).reshape(-1, 1) # (num_feas_observations, 1)
 
 		else:
 			feas_ix = np.where(~np.isnan(self._values))[0]
@@ -313,26 +334,14 @@ class BoTorchPlanner(CustomPlanner):
 		Args:
 			observations (obj): Olympus campaign observations object
 		'''
-		if type(observations)==list:
-			assert self.is_moo
-			if len(observations) != len(self.tolerances):
-				print(f'[FATAL]: number of objectives (len(observations)) does not equal number of tolerances (len(self.tolerances))')
-				quit()
-			# TODO: the params for all the objectives should be the same
-			self._params = observations[0].get_params()
-			self._values = [np.array(obs.get_values(as_array=True, opposite=self.flip_measurements)) for obs in observations]
-			self._values = np.stack(self._values, axis=-1) # (num_observations, num_objectives)
+		# elif type(observations) == olympus.campaigns.observations.Observations:
+		self._params = observations.get_params() # string encodings of categorical params
+		self._values = observations.get_values(as_array=True, opposite=self.flip_measurements)
 
-
-		elif type(observations) == olympus.campaigns.observations.Observations:
-			self._params = observations.get_params() # string encodings of categorical params
-			self._values = observations.get_values(as_array=True, opposite=self.flip_measurements)
-			# make values 2d if they are not already
-			if len(np.array(self._values).shape)==1:
-				self._values = np.array(self._values).reshape(-1, 1)
-		else:
-			raise TypeError
-
+		# make values 2d if they are not already
+		if len(np.array(self._values).shape)==1:
+			self._values = np.array(self._values).reshape(-1, 1)
+	
 
 
 	def _ask(self):
@@ -340,13 +349,15 @@ class BoTorchPlanner(CustomPlanner):
 		'''
 		# if we have all nan values, just keep randomly sampling
 		if np.logical_or(
-			len(self._values) < self.num_init_design,
+			len(self._values) < self.num_init_design,  
 			np.all(np.isnan(self._values))
 		):
-			# sample using initial design strategy
-			sample, raw_sample = propose_randomly(1, self.param_space)
-			return_params = ParameterVector().from_array(raw_sample[0], self.param_space)
+			# set parameter space for the initial design planner
+			self.init_design_planner.set_param_space(self.param_space)
 
+			# sample using initial design strategy
+			return_params = [self.init_design_planner.ask()]
+	
 		else:
 			# use GP surrogate to propose the samples
 			# get the scaled parameters and values for both the regression and classification data
@@ -417,10 +428,6 @@ class BoTorchPlanner(CustomPlanner):
 			else:
 				self.cla_model, self.cla_likelihood = None, None
 
-			print(self.known_constraints)
-			print(self.feas_strategy)
-
-
 			# get the incumbent point
 			f_best_argmin = torch.argmin(self.train_y_scaled_reg)
 			f_best_scaled = self.train_y_scaled_reg[f_best_argmin][0].float()
@@ -430,30 +437,30 @@ class BoTorchPlanner(CustomPlanner):
 			# get the approximate max and min of the acquisition function without the feasibility contribution
 			acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled)
 
-			# self.acqf = FeasibilityAwareEI(
-			# 	self.reg_model, self.cla_model, self.cla_likelihood, f_best_scaled,
-			# 	self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max,
-			# )
 
-			# general purpose acquisition function
-			self.acqf = FeasibilityAwareGeneral(
-				self.reg_model, self.cla_model, self.cla_likelihood, self.general_parmeters,
-				self.param_space, f_best_scaled,
-				self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max,
-				) 
+			if self.batch_size == 1:
+				self.acqf = FeasibilityAwareEI(
+					self.reg_model, self.cla_model, self.cla_likelihood,
+					self.param_space, f_best_scaled,
+					self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max,
+					) 
+			elif self.batch_size > 1:
+				self.acqf = FeasibilityAwareQEI(
+					self.reg_model, self.cla_model, self.cla_likelihood,
+					self.param_space, f_best_scaled,
+					self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max
+				)
+
+
 
 			bounds = get_bounds(self.param_space, self.has_descriptors)
 
 			print('PROBLEM TYPE : ', self.problem_type)
 			choices_feat, choices_cat = None, None
-			print(self.known_constraints)
-			print(self.feas_strategy)
 
 
 			if self.problem_type == 'fully_continuous':
 
-				print(self.known_constraints)
-				print(self.feas_strategy)
 
 				nonlinear_inequality_constraints = []
 				if callable(self.known_constraints):
@@ -479,8 +486,8 @@ class BoTorchPlanner(CustomPlanner):
 
 						if type(batch_initial_conditions) == type(None):
 							# if we still cannot find initial conditions, there is likey a problem, return to user
-							print('Could not find inital conditions for constrianed optimization...')
-							quit()
+							message = 'Could not find inital conditions for constrianed optimization...'
+							Logger.log(message, 'FATAL')
 						elif type(batch_initial_conditions) == torch.Tensor:
 							# weve found sufficient conditions
 							pass
@@ -497,8 +504,8 @@ class BoTorchPlanner(CustomPlanner):
 						)
 						if type(batch_initial_conditions) == type(None):
 							# return an error to the user 
-							print('[FATAL] Could not find inital conditions for constrianed optimization...')
-							quit()
+							message = 'Could not find inital conditions for constrianed optimization...'
+							Logger.log(message, 'FATAL')
 				
 				if not self.known_constraints and not self.feas_strategy =='fca':
 					# we dont have any constraints
@@ -531,11 +538,6 @@ class BoTorchPlanner(CustomPlanner):
 					fixed_features_list=fixed_features_list,
 
 				)
-
-				print(results)
-				print(results.shape)
-				
-
 
 			elif self.problem_type == 'fully_categorical':
 				# need to implement the choices input, which is a
@@ -571,47 +573,61 @@ class BoTorchPlanner(CustomPlanner):
 			# TODO: clean this bit up
 			if self.problem_type in ['fully_categorical', 'mixed'] and not self.has_descriptors:
 				# project the sample back to Olympus format
+				samples = []
 				results_np = results_torch.detach().numpy()
-				sample = project_to_olymp(
-					results_np, self.param_space,
-					has_descriptors=self.has_descriptors,
-					choices_feat=choices_feat, choices_cat=choices_cat,
-				)
+				for sample_ix in range(results_np.shape[0]):
+					sample = project_to_olymp(
+						results_np, self.param_space,
+						has_descriptors=self.has_descriptors,
+						choices_feat=choices_feat, choices_cat=choices_cat,
+					)
+					samples.append(ParameterVector().from_dict(sample, self.param_space))
+
 			elif self.problem_type in ['fully_categorical', 'mixed'] and self.has_descriptors:
 
 				# if we have descriptors, dont reverse normalize the results (this
 				# works better for the lookup)
 				# project the sample back to Olympus format
-				sample = project_to_olymp(
-					results_torch, self.param_space,
-					has_descriptors=self.has_descriptors,
-					choices_feat=choices_feat, choices_cat=choices_cat,
-				)
+				samples = []
+				for sample_ix in range(results_torch.shape[0]):
+					sample = project_to_olymp(
+						results_torch[sample_ix], 
+						self.param_space,
+						has_descriptors=self.has_descriptors,
+						choices_feat=choices_feat, choices_cat=choices_cat,
+					)
+					samples.append(ParameterVector().from_dict(sample, self.param_space))
 
 			else:
 				# reverse transform the inputs
 				results_np = results_torch.detach().numpy()
+				if len(results_np.shape) == 1:
+					results_np = results_np.reshape(1, -1)
 				results_np = reverse_normalize(results_np, self._mins_x, self._maxs_x)
 
-				# project the sample back to Olympus format
-				sample = project_to_olymp(
-					results_np, self.param_space,
-					has_descriptors=self.has_descriptors,
-					choices_feat=choices_feat, choices_cat=choices_cat,
-				)
+				samples = []
+				for sample_ix in range(results_np.shape[0]):
+					# project the sample back to Olympus format
+					sample = project_to_olymp(
+						results_np[sample_ix], 
+						self.param_space,
+						has_descriptors=self.has_descriptors,
+						choices_feat=choices_feat, choices_cat=choices_cat,
+					)
+					samples.append(ParameterVector().from_dict(sample, self.param_space))
 	
-			return_params = ParameterVector().from_dict(sample, self.param_space)
+			return_params = samples
 
 		return return_params
 
 
 	def fca_constraint(self, X):
 		''' Each callable is expected to take a `(num_restarts) x q x d`-dim tensor as an
-            input and return a `(num_restarts) x q`-dim tensor with the constraint
-            values. The constraints will later be passed to SLSQP. You need to pass in
-            `batch_initial_conditions` in this case. Using non-linear inequality
-            constraints also requires that `batch_limit` is set to 1, which will be
-            done automatically if not specified in `options`.
+			input and return a `(num_restarts) x q`-dim tensor with the constraint
+			values. The constraints will later be passed to SLSQP. You need to pass in
+			`batch_initial_conditions` in this case. Using non-linear inequality
+			constraints also requires that `batch_limit` is set to 1, which will be
+			done automatically if not specified in `options`.
 			>= 0 is a feasible point
 			<  0 is an infeasible point
 		Args:
@@ -638,7 +654,10 @@ class BoTorchPlanner(CustomPlanner):
 		the feasibility contribution. These values will be used to approximately
 		normalize the acquisition function
 		'''
-		acqf = ExpectedImprovement(reg_model, f_best_scaled, objective=None, maximize=False)
+		if self.batch_size == 1:
+			acqf = ExpectedImprovement(reg_model, f_best_scaled, objective=None, maximize=False)
+		elif self.batch_size > 1:
+			acqf = qExpectedImprovement(reg_model, f_best_scaled, objective=None, maximize=False)
 		samples, _ = propose_randomly(num_samples, self.param_space)
 		if not self.problem_type=='fully_categorical' and not self.has_descriptors:
 			# we dont scale the parameters if we have a one-hot-encoded representation

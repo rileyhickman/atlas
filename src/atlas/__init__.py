@@ -11,6 +11,8 @@ __home__ = os.environ.get("ATLAS_HOME") or atlas_home
 __scratch__ = os.environ.get("ATLAS_SCRATCH") or atlas_scratch
 
 
+from .utils.logger import MessageLogger
+Logger = MessageLogger()
 
 
 
