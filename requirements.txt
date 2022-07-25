@@ -1,0 +1,12 @@
+botorch==0.6.3.1
+matter-chimera
+scikit-learn
+scipy
+pyDOE
+sobol-seq
+tqdm
+ipykernel
+jupyterlab
+matplotlib
+seaborn
+pandas

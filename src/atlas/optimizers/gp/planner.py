@@ -25,7 +25,7 @@ from botorch.acquisition import ExpectedImprovement, qExpectedImprovement, qNois
 import olympus
 from olympus.planners import CustomPlanner, AbstractPlanner
 from olympus import ParameterVector
-from olympus.scalarizers import Scalarizer
+                                                                                                                                                                 
 from olympus.planners import Planner
 
 from botorch.models.gpytorch import GPyTorchModel
