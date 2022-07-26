@@ -8,7 +8,7 @@ import itertools
 
 def infer_problem_type(param_space):
 	''' infer the parameter space from Olympus. The three possibilities are
-	"fully_continuous", "mixed", or "fully_categorical"
+	"fully_continuous", "mixed" or "fully_categorical"
 	Args:
 		param_space (obj): Olympus parameter space object
 	'''
@@ -207,8 +207,9 @@ def project_to_olymp(
 			else:
 				# if categorical, scan the one-hot encoded portion
 				cat_vec = results[idx_counter:idx_counter+len(param.options)]
-				argmin = get_closest_ohe(cat_vec)
-				sample = param.options[argmin]
+				#argmin = get_closest_ohe(cat_vec)
+				argmax = np.argmax(cat_vec)
+				sample = param.options[argmax]
 				idx_counter += len(param.options)
 		elif param.type == 'discrete':
 			# TODO: discrete params not supported now
@@ -222,6 +223,7 @@ def get_closest_ohe(cat_vec):
 	''' return index of closest ohe vector
 	'''
 	ohe_options = np.eye(cat_vec.shape[0])
+	print(ohe_options.shape, cat_vec.shape)
 	dists = np.sum(np.square(np.subtract(ohe_options,cat_vec)), axis=1)
 	return np.argmin(dists)
 

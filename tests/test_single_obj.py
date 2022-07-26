@@ -32,7 +32,8 @@ def test_continuous():
 		goal='minimize',
 		feas_strategy='naive-0',
 		init_design_strategy='lhs',
-		num_init_design=5, 
+		num_init_design=4,
+		batch_size=1, 
 	)
 
 	planner.set_param_space(param_space)
@@ -42,14 +43,14 @@ def test_continuous():
 
 	BUDGET = 10
 
-	for num_iter in range(BUDGET):
+	while len(campaign.observations.get_values()) < BUDGET:
 
-		sample = planner.recommend(campaign.observations)
-		#print(f'ITER : {num_iter}\tSAMPLES : {sample}')
-		sample_arr = sample.to_array()
-		measurement = surface(sample_arr)
+		samples = planner.recommend(campaign.observations)
+		for sample in samples:
+			sample_arr = sample.to_array()
+			measurement = surface(sample_arr)
+			campaign.add_observation(sample_arr, measurement)
 
-		campaign.add_observation(sample_arr, measurement)
 
 	assert len(campaign.observations.get_params())==BUDGET
 	assert len(campaign.observations.get_values())==BUDGET
@@ -67,18 +68,22 @@ def test_categorical():
 	planner = BoTorchPlanner(
 		goal='minimize',
 		feas_strategy='naive-0',
+		init_design_strategy='random',
+		num_init_design=4, 
+		batch_size=1,
 	)
 	planner.set_param_space(surface.param_space)
 
 	BUDGET = 10
 
-	for iter in range(BUDGET):
+	while len(campaign.observations.get_values()) < BUDGET:
 
-		sample = planner.recommend(campaign.observations)
-		print(f'ITER : {iter}\tSAMPLES : {sample}')
-		sample_arr = sample.to_array()
-		measurement = np.array(surface.run(sample_arr))
-		campaign.add_observation(sample_arr, measurement[0])
+		samples = planner.recommend(campaign.observations)
+		for sample in samples:
+			sample_arr = sample.to_array()
+			measurement = np.array(surface.run(sample_arr))
+			#print(sample, measurement)
+			campaign.add_observation(sample_arr, measurement[0])
 
 	assert len(campaign.observations.get_params())==BUDGET
 	assert len(campaign.observations.get_values())==BUDGET
@@ -124,7 +129,13 @@ def test_mixed():
 	campaign = Campaign()
 	campaign.set_param_space(param_space)
 
-	planner = BoTorchPlanner(goal='maximize', feas_strategy='naive-0')
+	planner = BoTorchPlanner(
+					goal='maximize', 
+					feas_strategy='naive-0',
+					init_design_strategy='random',
+					num_init_design=4, 
+					batch_size=1,
+				)
 	planner.set_param_space(param_space)
 
 	BUDGET = 10
@@ -132,13 +143,14 @@ def test_mixed():
 	def mock_yield(x):
 		return np.random.uniform()*100
 
-	for iter in range(BUDGET):
+	while len(campaign.observations.get_values()) < BUDGET:
 
-		sample = planner.recommend(campaign.observations)
-		sample_arr = sample.to_array()
-		measurement = mock_yield(sample)
-		print(f'ITER : {iter}\tSAMPLES : {sample}\t MEASUREMENT : {measurement}')
-		campaign.add_observation(sample_arr, measurement)
+		samples = planner.recommend(campaign.observations)
+		for sample in samples:
+			sample_arr = sample.to_array()
+			measurement = mock_yield(sample)
+			#print(f'ITER : {iter}\tSAMPLES : {sample}\t MEASUREMENT : {measurement}')
+			campaign.add_observation(sample_arr, measurement)
 
 	assert len(campaign.observations.get_params())==BUDGET
 	assert len(campaign.observations.get_values())==BUDGET
@@ -151,6 +163,6 @@ def test_mixed():
 
 
 if __name__ == '__main__':
-	test_continuous()
-	#test_categorical()
+	#test_continuous()
+	test_categorical()
 	#test_mixed()

@@ -25,7 +25,7 @@ from botorch.acquisition import ExpectedImprovement, qExpectedImprovement, qNois
 import olympus
 from olympus.planners import CustomPlanner, AbstractPlanner
 from olympus import ParameterVector
-                                                                                                                                                                 
+from olympus.scalarizers import Scalarizer																															 
 from olympus.planners import Planner
 
 from botorch.models.gpytorch import GPyTorchModel
@@ -167,6 +167,8 @@ class BoTorchPlanner(CustomPlanner):
 		else:
 			message = f'Initial design strategy {self.init_design_strategy} not implemented'
 			Logger.log(message, 'FATAL')
+
+		self.num_init_design_completed = 0
 
 
 
@@ -356,8 +358,21 @@ class BoTorchPlanner(CustomPlanner):
 			self.init_design_planner.set_param_space(self.param_space)
 
 			# sample using initial design strategy (with same batch size)
-			return_params = [self.init_design_planner.ask() for _ in range(self.batch_size)]
-	
+			return_params = []
+			for _ in range(self.batch_size):
+				# TODO: this is pretty sloppy - consider standardizing this
+				if self.init_design_strategy == 'random':
+					self.init_design_planner._tell(iteration=self.num_init_design_completed)
+				else:
+					self.init_design_planner.tell()
+				rec_params = self.init_design_planner.ask()
+				if isinstance(rec_params, list):
+					return_params.append(rec_params[0])
+				elif isinstance(rec_params, ParameterVector):
+					return_params.append(rec_params)
+				else:
+					raise TypeError
+				self.num_init_design_completed += 1 # batch_size always 1 for init design planner
 		else:
 			# use GP surrogate to propose the samples
 			# get the scaled parameters and values for both the regression and classification data
@@ -450,7 +465,6 @@ class BoTorchPlanner(CustomPlanner):
 					self.param_space, f_best_scaled,
 					self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max
 				)
-
 
 
 			bounds = get_bounds(self.param_space, self.has_descriptors)
@@ -575,13 +589,18 @@ class BoTorchPlanner(CustomPlanner):
 				# project the sample back to Olympus format
 				samples = []
 				results_np = results_torch.detach().numpy()
+				if len(results_np.shape) == 1:
+					results_np = results_np.reshape(1, -1)
+	
 				for sample_ix in range(results_np.shape[0]):
 					sample = project_to_olymp(
-						results_np, self.param_space,
+						results_np[sample_ix], self.param_space,
 						has_descriptors=self.has_descriptors,
 						choices_feat=choices_feat, choices_cat=choices_cat,
 					)
 					samples.append(ParameterVector().from_dict(sample, self.param_space))
+
+
 
 			elif self.problem_type in ['fully_categorical', 'mixed'] and self.has_descriptors:
 
@@ -589,6 +608,8 @@ class BoTorchPlanner(CustomPlanner):
 				# works better for the lookup)
 				# project the sample back to Olympus format
 				samples = []
+				if len(results_torch.shape) == 1:
+					results_torch = results_torch.reshape(1, -1)
 				for sample_ix in range(results_torch.shape[0]):
 					sample = project_to_olymp(
 						results_torch[sample_ix], 

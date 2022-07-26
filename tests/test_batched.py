@@ -30,7 +30,7 @@ def test_continuous_batched():
 		goal='minimize',
 		feas_strategy='naive-0',
 		init_design_strategy='lhs',
-		num_init_design=5, 
+		num_init_design=4, 
 		batch_size=2,
 	)
 
@@ -50,8 +50,107 @@ def test_continuous_batched():
 			campaign.add_observation(sample_arr, measurement)
 
 
+def test_categorical_batched():
+
+	surface_kind = 'CatDejong'
+	surface = Surface(kind=surface_kind, param_dim=2, num_opts=21)
+
+	campaign = Campaign()
+	campaign.set_param_space(surface.param_space)
+
+	planner = BoTorchPlanner(
+		goal='minimize',
+		feas_strategy='naive-0',
+		init_design_strategy='random',
+		num_init_design=4, 
+		batch_size=2,
+	)
+	planner.set_param_space(surface.param_space)
+
+	BUDGET = 10
+
+	while len(campaign.observations.get_values()) < BUDGET:
+
+		samples = planner.recommend(campaign.observations)
+		for sample in samples:
+			sample_arr = sample.to_array()
+			measurement = np.array(surface.run(sample_arr))
+			#print(sample, measurement)
+			campaign.add_observation(sample_arr, measurement[0])
+
+	assert len(campaign.observations.get_params())==BUDGET
+	assert len(campaign.observations.get_values())==BUDGET
+
+
+def test_mixed():
+
+	param_space = ParameterSpace()
+	# add ligand
+	param_space.add(
+		ParameterCategorical(
+			name='cat_index',
+			options=[str(i) for i in range(8)],
+			descriptors=[None for i in range(8)],        # add descriptors later
+		)
+	)
+	# add temperature
+	param_space.add(
+		ParameterContinuous(
+			name='temperature',
+			low=30.,
+			high=110.
+		)
+	)
+	# add residence time
+	param_space.add(
+		ParameterContinuous(
+			name='t',
+			low=60.,
+			high=600.
+		)
+	)
+	# add catalyst loading
+	# summit expects this to be in nM
+	param_space.add(
+		ParameterContinuous(
+			name='conc_cat',
+			low=0.835/1000,
+			high=4.175/1000,
+		)
+	)
+
+	campaign = Campaign()
+	campaign.set_param_space(param_space)
+
+	planner = BoTorchPlanner(
+					goal='maximize', 
+					feas_strategy='naive-0',
+					init_design_strategy='random',
+					num_init_design=4, 
+					batch_size=2,
+				)
+	planner.set_param_space(param_space)
+
+	BUDGET = 10
+
+	def mock_yield(x):
+		return np.random.uniform()*100
+
+	while len(campaign.observations.get_values()) < BUDGET:
+
+		samples = planner.recommend(campaign.observations)
+		for sample in samples:
+			sample_arr = sample.to_array()
+			measurement = mock_yield(sample)
+			#print(f'ITER : {iter}\tSAMPLES : {sample}\t MEASUREMENT : {measurement}')
+			campaign.add_observation(sample_arr, measurement)
+
+	assert len(campaign.observations.get_params())==BUDGET
+	assert len(campaign.observations.get_values())==BUDGET
+
+
 
 if __name__ == '__main__':
 
-	test_continuous_batched()
-	#test_categorical_batched()
+	#test_continuous_batched()
+	test_categorical_batched()

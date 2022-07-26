@@ -45,13 +45,14 @@ def test_continuous_hypervolume():
 
 	BUDGET = 10
 
-	for num_iter in range(BUDGET):
+	while len(campaign.observations.get_values()) < BUDGET:
 
-		sample = planner.recommend(campaign.observations)
-		sample_arr = sample.to_array()
-		measurement = moo_surface.run(sample_arr, return_paramvector=True)
+		samples = planner.recommend(campaign.observations)
 
-		campaign.add_and_scalarize(sample_arr, measurement, scalarizer)
+		for sample in samples:
+			sample_arr = sample.to_array()
+			measurement = moo_surface.run(sample_arr, return_paramvector=True)
+			campaign.add_and_scalarize(sample_arr, measurement, scalarizer)
 
 
 	assert len(campaign.observations.get_params())==BUDGET
@@ -89,13 +90,14 @@ def test_continuous_parego():
 
 	BUDGET = 10
 
-	for num_iter in range(BUDGET):
+	while len(campaign.observations.get_values()) < BUDGET:
 
-		sample = planner.recommend(campaign.observations)
-		sample_arr = sample.to_array()
-		measurement = moo_surface.run(sample_arr, return_paramvector=True)
+		samples = planner.recommend(campaign.observations)
 
-		campaign.add_and_scalarize(sample_arr, measurement, scalarizer)
+		for sample in samples:
+			sample_arr = sample.to_array()
+			measurement = moo_surface.run(sample_arr, return_paramvector=True)
+			campaign.add_and_scalarize(sample_arr, measurement, scalarizer)
 
 
 	assert len(campaign.observations.get_params())==BUDGET
@@ -133,13 +135,14 @@ def test_continuous_weighted_sum():
 
 	BUDGET = 10
 
-	for num_iter in range(BUDGET):
+	while len(campaign.observations.get_values()) < BUDGET:
 
-		sample = planner.recommend(campaign.observations)
-		sample_arr = sample.to_array()
-		measurement = moo_surface.run(sample_arr, return_paramvector=True)
+		samples = planner.recommend(campaign.observations)
 
-		campaign.add_and_scalarize(sample_arr, measurement, scalarizer)
+		for sample in samples:
+			sample_arr = sample.to_array()
+			measurement = moo_surface.run(sample_arr, return_paramvector=True)
+			campaign.add_and_scalarize(sample_arr, measurement, scalarizer)
 
 
 	assert len(campaign.observations.get_params())==BUDGET
@@ -179,13 +182,14 @@ def test_continuous_chimera():
 
 	BUDGET = 10
 
-	for num_iter in range(BUDGET):
+	while len(campaign.observations.get_values()) < BUDGET:
 
-		sample = planner.recommend(campaign.observations)
-		sample_arr = sample.to_array()
-		measurement = moo_surface.run(sample_arr, return_paramvector=True)
+		samples = planner.recommend(campaign.observations)
 
-		campaign.add_and_scalarize(sample_arr, measurement, scalarizer)
+		for sample in samples:
+			sample_arr = sample.to_array()
+			measurement = moo_surface.run(sample_arr, return_paramvector=True)
+			campaign.add_and_scalarize(sample_arr, measurement, scalarizer)
 
 
 	assert len(campaign.observations.get_params())==BUDGET
