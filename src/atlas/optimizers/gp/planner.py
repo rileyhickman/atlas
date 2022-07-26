@@ -355,8 +355,8 @@ class BoTorchPlanner(CustomPlanner):
 			# set parameter space for the initial design planner
 			self.init_design_planner.set_param_space(self.param_space)
 
-			# sample using initial design strategy
-			return_params = [self.init_design_planner.ask()]
+			# sample using initial design strategy (with same batch size)
+			return_params = [self.init_design_planner.ask() for _ in range(self.batch_size)]
 	
 		else:
 			# use GP surrogate to propose the samples
