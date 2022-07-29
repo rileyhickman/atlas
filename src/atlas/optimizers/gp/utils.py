@@ -60,7 +60,8 @@ def get_fixed_features_list(param_space):
 	for elem in cart_product:
 		# convert to ohe and add to currently available options
 		ohe = []
-		for val, obj in zip(elem, param_space):
+		#for val, obj in zip(elem, param_space):
+		for val, obj in zip(elem, cat_params):
 			ohe.append(cat_param_to_feat(obj, val))
 		current_avail_feat.append(np.concatenate(ohe))
 		current_avail_cat.append(elem)
@@ -85,10 +86,10 @@ def cat_param_to_feat(param, val):
 		val (str): the value of the chosen categorical option
 	'''
 	# get the index of the selected value amongst the options
-	arg_val = param.options.index(val)
+
+	arg_val = param.options.index(val)	
 	if np.all([d==None for d in param.descriptors]):
 		# no provided descriptors, resort to one-hot encoding
-		#feat = np.array([arg_val])
 		feat = np.zeros(len(param.options))
 		feat[arg_val] += 1.
 	else:
@@ -223,12 +224,11 @@ def get_closest_ohe(cat_vec):
 	''' return index of closest ohe vector
 	'''
 	ohe_options = np.eye(cat_vec.shape[0])
-	print(ohe_options.shape, cat_vec.shape)
 	dists = np.sum(np.square(np.subtract(ohe_options,cat_vec)), axis=1)
 	return np.argmin(dists)
 
 
-def get_bounds(param_space, has_descriptors):
+def get_bounds(param_space, mins_x, maxs_x, has_descriptors):
 	''' returns scaled bounds of the parameter space
 	torch tensor of shape (# dims, 2) (low and upper bounds)
 	'''
@@ -236,7 +236,7 @@ def get_bounds(param_space, has_descriptors):
 	for param_ix, param in enumerate(param_space):
 		if param.type == 'continuous':
 			b = np.array([param.low, param.high])
-			#b = (b - self._means_x[param_ix]) / self._stds_x[param_ix]
+			b = (b-mins_x[param_ix]) / (maxs_x[param_ix]-mins_x[param_ix])
 			bounds.append(b)
 		elif param.type == 'categorical':
 			if has_descriptors:

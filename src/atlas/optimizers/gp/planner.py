@@ -467,7 +467,7 @@ class BoTorchPlanner(CustomPlanner):
 				)
 
 
-			bounds = get_bounds(self.param_space, self.has_descriptors)
+			bounds = get_bounds(self.param_space, self._mins_x, self._maxs_x, self.has_descriptors)
 
 			print('PROBLEM TYPE : ', self.problem_type)
 			choices_feat, choices_cat = None, None

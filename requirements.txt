@@ -10,3 +10,5 @@ jupyterlab
 matplotlib
 seaborn
 pandas
+SQLAlchemy
+silence-tensorflow
