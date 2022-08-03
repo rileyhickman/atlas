@@ -69,7 +69,7 @@ def get_fixed_features_list(param_space):
 	# make list
 	for feat in current_avail_feat:
 		fixed_features_list.append(
-			{ix:f for ix, f in enumerate(feat)}
+			{ix:f for ix, f in zip(cat_dims, feat)}
 		)
 
 
@@ -233,15 +233,20 @@ def get_bounds(param_space, mins_x, maxs_x, has_descriptors):
 	torch tensor of shape (# dims, 2) (low and upper bounds)
 	'''
 	bounds = []
+	idx_counter = 0
 	for param_ix, param in enumerate(param_space):
 		if param.type == 'continuous':
 			b = np.array([param.low, param.high])
-			b = (b-mins_x[param_ix]) / (maxs_x[param_ix]-mins_x[param_ix])
+			b = (b-mins_x[idx_counter]) / (maxs_x[idx_counter]-mins_x[idx_counter])
 			bounds.append(b)
+			idx_counter += 1
 		elif param.type == 'categorical':
 			if has_descriptors:
 				bounds += [[np.amin(param.descriptors[opt_ix]), np.amax(param.descriptors[opt_ix])] for opt_ix in range(len(param.options))]
 			else:
 				bounds += [[0, 1] for _ in param.options]
+			idx_counter += len(param.options)
+
 
 	return torch.tensor(np.array(bounds)).T.float()
+

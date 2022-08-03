@@ -17,40 +17,6 @@ from olympus.emulators import Emulator
 from olympus.planners import RandomSearch
 
 
-# # load in the dataset
-# df_results = pd.read_csv('data.csv')
-# print(df_results.shape)
-# print(df_results.head())
-
-
-# load olympus lnp dataset
-
-dataset = Dataset('lnp')
-print(dataset.data.shape)
-print(dataset.data.head())
-
-print(dataset.param_space)
-
-
-# load emulator
-emulator = Emulator(dataset='lnp', model='BayesNeuralNet')
-print(emulator)
-
-
-campaign = Campaign()
-campaign.set_param_space(dataset.param_space)
-campaign.set_value_space(dataset.value_space)
-
-planner = RandomSearch(goal='minimize')
-planner.set_param_space(dataset.param_space)
-
-scalarizer = Scalarizer(
-		kind='Hypervolume',
-		value_space=dataset.value_space,
-		goals=['min', 'max'],
-	)
-
-
 budget = 50
 num_repeats = 20
 
@@ -59,13 +25,30 @@ data_all_repeats = []
 
 for num_repeat in range(num_repeats):
 
+	dataset = Dataset('lnp')
+
+	# load emulator
+	emulator = Emulator(dataset='lnp', model='BayesNeuralNet')
+
+
+	campaign = Campaign()
+	campaign.set_param_space(dataset.param_space)
+	campaign.set_value_space(dataset.value_space)
+
+	planner = RandomSearch(goal='minimize')
+	planner.set_param_space(dataset.param_space)
+
+	scalarizer = Scalarizer(
+			kind='Hypervolume',
+			value_space=dataset.value_space,
+			goals=['min', 'max'],
+		)
+
 	for num_iter in range(budget):
 
 		print(f'repeat {num_repeat}\titer {num_iter+1}')
 
 		samples = planner.recommend(campaign.observations)
-
-		print('len samples : ', len(samples))
 
 		for sample in samples:
 			sample_arr = sample.to_list()
@@ -94,5 +77,5 @@ for num_repeat in range(num_repeats):
 	data = pd.DataFrame(cols)
 	data_all_repeats.append(data)
 
-	pickle.dump(data_all_repeats, open('results_random.pkl', 'wb'))
+	pickle.dump(data_all_repeats, open('results/results_random.pkl', 'wb'))
 

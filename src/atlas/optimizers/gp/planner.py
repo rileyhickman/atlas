@@ -469,6 +469,7 @@ class BoTorchPlanner(CustomPlanner):
 
 			bounds = get_bounds(self.param_space, self._mins_x, self._maxs_x, self.has_descriptors)
 
+
 			print('PROBLEM TYPE : ', self.problem_type)
 			choices_feat, choices_cat = None, None
 
@@ -527,7 +528,6 @@ class BoTorchPlanner(CustomPlanner):
 					batch_initial_conditions = None 
 
 
-
 				results, _ = optimize_acqf(
 					acq_function=self.acqf,
 					bounds=bounds,
@@ -542,11 +542,18 @@ class BoTorchPlanner(CustomPlanner):
 
 				fixed_features_list = get_fixed_features_list(self.param_space)
 
+				print('fixed_features_list': fixed_features_list)
+
+				# fixed_features_list = [
+				# 	{1: 1.0, 2: 0.0, 3: 0.0},
+				# 	{1: 0.0, 2: 1.0, 3: 0.0},
+				# 	{1: 0.0, 2: 0.0, 3: 1.0},
+				# ]
 
 				results, _ = optimize_acqf_mixed(
 					acq_function=self.acqf,
 					bounds=bounds,
-					num_restarts=200,
+					num_restarts=100,
 					q=self.batch_size,
 					raw_samples=1000,
 					fixed_features_list=fixed_features_list,
@@ -591,7 +598,7 @@ class BoTorchPlanner(CustomPlanner):
 				results_np = results_torch.detach().numpy()
 				if len(results_np.shape) == 1:
 					results_np = results_np.reshape(1, -1)
-	
+				results_np = reverse_normalize(results_np, self._mins_x, self._maxs_x)
 				for sample_ix in range(results_np.shape[0]):
 					sample = project_to_olymp(
 						results_np[sample_ix], self.param_space,
@@ -599,7 +606,6 @@ class BoTorchPlanner(CustomPlanner):
 						choices_feat=choices_feat, choices_cat=choices_cat,
 					)
 					samples.append(ParameterVector().from_dict(sample, self.param_space))
-
 
 
 			elif self.problem_type in ['fully_categorical', 'mixed'] and self.has_descriptors:
