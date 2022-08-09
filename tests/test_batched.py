@@ -82,7 +82,7 @@ def test_categorical_batched():
 	assert len(campaign.observations.get_values())==BUDGET
 
 
-def test_mixed():
+def test_mixed_batched():
 
 	param_space = ParameterSpace()
 	# add ligand

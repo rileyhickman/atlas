@@ -23,6 +23,7 @@ def test_continuous_hypervolume():
 	planner = BoTorchPlanner(
 		goal='minimize',
 		feas_strategy='naive-0',
+		init_design_strategy='lhs',
 		is_moo=True,
 		value_space=moo_surface.value_space,
 		scalarizer_kind='Hypervolume',
@@ -68,6 +69,7 @@ def test_continuous_parego():
 	planner = BoTorchPlanner(
 		goal='minimize',
 		feas_strategy='naive-0',
+		init_design_strategy='lhs',
 		is_moo=True,
 		value_space=moo_surface.value_space,
 		scalarizer_kind='Parego',
@@ -113,6 +115,7 @@ def test_continuous_weighted_sum():
 	planner = BoTorchPlanner(
 		goal='minimize',
 		feas_strategy='naive-0',
+		init_design_strategy='lhs',
 		is_moo=True,
 		value_space=moo_surface.value_space,
 		scalarizer_kind='WeightedSum',
@@ -158,6 +161,7 @@ def test_continuous_chimera():
 	planner = BoTorchPlanner(
 		goal='minimize',
 		feas_strategy='naive-0',
+		init_design_strategy='lhs',
 		is_moo=True,
 		value_space=moo_surface.value_space,
 		scalarizer_kind='Chimera',

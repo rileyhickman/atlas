@@ -14,8 +14,27 @@ from olympus.surfaces import Surface
 from atlas.optimizers.gp.planner import BoTorchPlanner
 
 
+INIT_DESIGN_STRATEGIES_CONT = ['random', 'sobol', 'lhs']
 
-def test_continuous():
+INIT_DESIGN_STRATEGIES_CAT = ['random']
+
+INIT_DESIGN_STRATEGIES_MIXED = ['random']
+
+@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_CONT)
+def test_init_design_cont(init_design_strategy):
+	run_continuous(init_design_strategy)
+
+
+@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_CAT)
+def test_init_design_cat(init_design_strategy):
+	run_categorical(init_design_strategy)
+
+@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_MIXED)
+def test_init_design_mixed(init_design_strategy):
+	run_mixed(init_design_strategy)
+
+
+def run_continuous(init_design_strategy):
 
 	def surface(x):
 		return np.sin(8*x[0]) - 2*np.cos(6*x[1]) + np.exp(-2.*x[2])
@@ -31,7 +50,7 @@ def test_continuous():
 	planner = BoTorchPlanner(
 		goal='minimize',
 		feas_strategy='naive-0',
-		init_design_strategy='lhs',
+		init_design_strategy=init_design_strategy,
 		num_init_design=4,
 		batch_size=1, 
 	)
@@ -57,7 +76,7 @@ def test_continuous():
 
 
 
-def test_categorical():
+def run_categorical(init_design_strategy):
 
 	surface_kind = 'CatDejong'
 	surface = Surface(kind=surface_kind, param_dim=2, num_opts=21)
@@ -68,7 +87,7 @@ def test_categorical():
 	planner = BoTorchPlanner(
 		goal='minimize',
 		feas_strategy='naive-0',
-		init_design_strategy='random',
+		init_design_strategy=init_design_strategy,
 		num_init_design=4, 
 		batch_size=1,
 	)
@@ -89,7 +108,7 @@ def test_categorical():
 	assert len(campaign.observations.get_values())==BUDGET
 
 
-def test_mixed():
+def run_mixed(init_design_strategy):
 
 	param_space = ParameterSpace()
 	# add ligand
@@ -132,7 +151,7 @@ def test_mixed():
 	planner = BoTorchPlanner(
 					goal='maximize', 
 					feas_strategy='naive-0',
-					init_design_strategy='random',
+					init_design_strategy=init_design_strategy,
 					num_init_design=4, 
 					batch_size=1,
 				)

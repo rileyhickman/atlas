@@ -69,7 +69,7 @@ def get_fixed_features_list(param_space):
 	# make list
 	for feat in current_avail_feat:
 		fixed_features_list.append(
-			{cat_dims[ix]:feat[ix] for ix in range(feat.shape[0])}
+			{dim_ix:feat[ix] for ix, dim_ix in enumerate(cat_dims)}
 		)
 
 
