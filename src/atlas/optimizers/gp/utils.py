@@ -46,7 +46,7 @@ def get_fixed_features_list(param_space):
 	for p in param_space:
 		if p.type == 'categorical':
 			dims = np.arange(dim, dim+len(p.options))
-			cat_dims.append(dims)
+			cat_dims.extend(dims)
 			cat_params.append(p)
 		else:
 			dim+=1
@@ -69,7 +69,7 @@ def get_fixed_features_list(param_space):
 	# make list
 	for feat in current_avail_feat:
 		fixed_features_list.append(
-			{ix:f for ix, f in zip(cat_dims, feat)}
+			{dim_ix:feat[ix] for ix, dim_ix in enumerate(cat_dims)}
 		)
 
 

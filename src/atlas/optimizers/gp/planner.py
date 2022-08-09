@@ -542,7 +542,7 @@ class BoTorchPlanner(CustomPlanner):
 
 				fixed_features_list = get_fixed_features_list(self.param_space)
 
-				print('fixed_features_list': fixed_features_list)
+				print('fixed_features_list :', fixed_features_list)
 
 				# fixed_features_list = [
 				# 	{1: 1.0, 2: 0.0, 3: 0.0},
