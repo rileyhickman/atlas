@@ -19,7 +19,6 @@ from olympus.emulators import Emulator
 from atlas.optimizers.gp.planner import BoTorchPlanner
 
 
-
 budget = 50
 num_repeats = 20
 
@@ -44,7 +43,7 @@ for num_repeat in range(num_repeats):
 		is_moo=True,
 		value_space=dataset.value_space,
 		batch_size=1,
-		num_init_design=10,
+		num_init_design=5,
 		scalarizer_kind='Hypervolume',
 		moo_params={},
 		goals=['min', 'max']
@@ -83,5 +82,5 @@ for num_repeat in range(num_repeats):
 	data = pd.DataFrame(cols)
 	data_all_repeats.append(data)
 
-	pickle.dump(data_all_repeats, open('results/results_botorch.pkl', 'wb'))
+	pickle.dump(data_all_repeats, open('results/results_botorch_5_init.pkl', 'wb'))
 

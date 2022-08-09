@@ -542,8 +542,6 @@ class BoTorchPlanner(CustomPlanner):
 
 				fixed_features_list = get_fixed_features_list(self.param_space)
 
-				print('fixed_features_list': fixed_features_list)
-
 				# fixed_features_list = [
 				# 	{1: 1.0, 2: 0.0, 3: 0.0},
 				# 	{1: 0.0, 2: 1.0, 3: 0.0},
@@ -553,9 +551,9 @@ class BoTorchPlanner(CustomPlanner):
 				results, _ = optimize_acqf_mixed(
 					acq_function=self.acqf,
 					bounds=bounds,
-					num_restarts=100,
+					num_restarts=30,
 					q=self.batch_size,
-					raw_samples=1000,
+					raw_samples=800,
 					fixed_features_list=fixed_features_list,
 
 				)

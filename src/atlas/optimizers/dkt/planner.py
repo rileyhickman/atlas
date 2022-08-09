@@ -45,12 +45,28 @@ from atlas.networks.dkt.dkt import DKT
 
 from atlas.optimizers.optimizer_utils import Scaler, flip_source_tasks
 
-from atlas.optimizers.dkt.utils import (
-	infer_problem_type,
+from atlas.optimizers.gp.utils import (
+	cat_param_to_feat,
 	propose_randomly,
+	forward_normalize,
+	reverse_normalize,
+	forward_standardize,
+	reverse_standardize,
+	infer_problem_type,
 	project_to_olymp,
-	get_closest_ohe,
 	get_bounds,
+	get_cat_dims,
+	get_fixed_features_list,
+)
+
+
+from atlas.optimizers.gp.gps import ClassificationGP, CategoricalSingleTaskGP
+
+from atlas.optimizers.gp.acqfs import (
+	FeasibilityAwareEI, 
+	FeasibilityAwareQEI,
+	FeasibilityAwareGeneral, 
+	get_batch_initial_conditions, 
 	create_available_options,
 )
 
