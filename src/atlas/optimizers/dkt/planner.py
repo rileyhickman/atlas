@@ -106,23 +106,32 @@ class DKTPlanner(CustomPlanner, Logger):
 	def __init__(
 		self,
 		goal='minimize',
-		kernel_type='matern',
-		warm_start=False,
-		transformation='identity',
+		feas_strategy='naive-0',
+		feas_param=0.2, 
+		batch_size=1,
+		random_seed=None,
+		num_init_design=5, 
+		init_design_strategy='random',
+		vgp_iters=1000, 
+		vgp_lr=0.1, 
+		max_jitter=1e-1,
+		cla_threshold=0.5, 
+		known_constraints=None, 
+		general_parmeters=None,
+		# meta-learning stuff 
+		warm_start=False, 
 		model_path='./.tmp_models',
 		from_disk=False,
-		random_seed=100700,
-		batch_size=1,
-		num_init_design=5,
-		num_proposals=500,
 		train_tasks=[],
 		valid_tasks=None,
-		num_restart_candidates=200,
-		param_scaling='identity',
-		value_scaling='standardization',
-		x_dim=None,
-		hyperparams={}
-		# **kwargs,
+		hyperparams={},
+		# moo stuff
+		is_moo=False,
+		value_space=None,
+		scalarizer_kind='Hypervolume',
+		moo_params={},
+		goals=None,
+		**kwargs,
 		):
 		'''
 			Args:
@@ -132,39 +141,71 @@ class DKTPlanner(CustomPlanner, Logger):
 		self.is_trained = False
 
 		self.goal = goal
-		self.kernel_type = kernel_type
-		self.warm_start = warm_start
-		self.transformation = transformation
-		self.model_path = model_path
-		self.from_disk = from_disk
-		self.random_seed = random_seed
+		self.feas_strategy = feas_strategy
+		self.feas_param = feas_param
 		self.batch_size = batch_size
-		self.num_init_design = num_init_design
-		self.num_proposals = num_proposals
-		self._train_tasks = train_tasks
-		self._valid_tasks = valid_tasks
-
-		self.num_restart_candidates = num_restart_candidates
-		self.param_scaling = param_scaling
-		self.value_scaling = value_scaling
-		self.hyperparams = hyperparams
-		self._x_dim = x_dim
-
-		# TODO: eventually handle this option
-		self.is_moo = False
-
-		# set the random seed
 		if random_seed is None:
-			self.random_seed = np.random.randint(0, 1e7)
+			self.random_seed = np.random.randint(0, int(10e6))
 		else:
 			self.random_seed = random_seed
+		np.random.seed(self.random_seed)
+
+		self.num_init_design = num_init_design
+		self.init_design_strategy = init_design_strategy
+		self.vgp_iters = vgp_iters
+		self.vgp_lr = vgp_lr
+		self.max_jitter = max_jitter
+		self.cla_threshold = cla_threshold
+		self.known_constraints = known_constraints
+		self.general_parmeters = general_parmeters
+		self.warm_start = warm_start
+		self.model_path = model_path
+		self.from_disk = from_disk
+		self.train_tasks = train_tasks
+		self.valid_tasks = valid_tasks
+		self.hyperparams = hyperparams
+
+		self.is_moo = is_moo
+		self.value_space = value_space
+		self.scalarizer_kind = scalarizer_kind
+		self.moo_params = moo_params
+		self.goals = goals
+
+		# check multiobjective stuff
+		if self.is_moo:
+			if self.goals is None:
+				message = f'You must individual goals for multiobjective optimization'
+				Logger.log(message, 'FATAL')
+
+			if self.goal == 'maximize':
+				message = 'Overall goal must be set to minimization for multiobjective optimization. Updating ...'
+				Logger.log(message, 'WARNING')
+				self.goal = 'minimize'
+
+			self.scalarizer = Scalarizer(
+				kind=self.scalarizer_kind, value_space=self.value_space, goals=self.goals, **self.moo_params
+			)
+
+
+		# treat the inital design arguments
+		if self.init_design_strategy == 'random':
+			self.init_design_planner = olympus.planners.RandomSearch(goal=self.goal)
+		elif self.init_design_strategy == 'sobol':
+			self.init_design_planner = olympus.planners.Sobol(goal=self.goal, budget=self.num_init_design)
+		elif self.init_design_strategy == 'lhs': 
+			self.init_design_planner = olympus.planners.LatinHypercube(goal=self.goal, budget=self.num_init_design)
+		else:
+			message = f'Initial design strategy {self.init_design_strategy} not implemented'
+			Logger.log(message, 'FATAL')
+
+		self.num_init_design_completed = 0
+
 
 		# # NOTE: for maximization, we must flip the signs of the
 		# source task values before scaling them
 		if self.goal == 'maximize':
 			self._train_tasks = flip_source_tasks(self._train_tasks)
 			self._valid_tasks = flip_source_tasks(self._valid_tasks)
-
 
 		# instantiate the scaler
 		self.scaler = Scaler(
@@ -178,12 +219,11 @@ class DKTPlanner(CustomPlanner, Logger):
 	def _set_param_space(self, param_space):
 		''' set the Olympus parameter space (not actually really needed)
 		'''
-
 		# infer the problem type
-		self.problem_type = infer_problem_type(param_space)
+		self.problem_type = infer_problem_type(self.param_space)
 
-		# make attribute that indicates whether or not we are using descriptors
-		# for the categorical variables
+		# make attribute that indicates wether or not we are using descriptors for
+		# categorical variables
 		if self.problem_type == 'fully_categorical':
 			descriptors = []
 			for p in self.param_space:
@@ -197,40 +237,19 @@ class DKTPlanner(CustomPlanner, Logger):
 
 
 
-	def _cat_param_to_feat(self, param, val):
-		''' convert the option selection of a categorical variable to
-		a machine readable feature vector
-		Args:
-			param (object): the categorical olympus parameter
-			val (): the value of the chosen categorical option
-		'''
-		# get the index of the selected value amongst the options
-		arg_val = param.options.index(val)
-		if np.all([d==None for d in param.descriptors]):
-			# no provided descriptors, resort to one-hot encoding
-			#feat = np.array([arg_val])
-			feat = np.zeros(len(param.options))
-			feat[arg_val] += 1.
-		else:
-			# we have descriptors, use them as the features
-			feat = param.descriptors[arg_val]
-		return feat
-
 	def _load_model(self):
-		'''
-		'''
-		if self.x_dim is None:
-			# infer the param space
-			if self.transformation == 'simpl':
-				# if we are using simpl transformation, predictions will be on n+1
-				# hypercube
-				x_dim = len(self.param_space)+1
-			else:
-				x_dim = len(self.param_space)
-		else:
-			# override the x_dim (for categorical vars with descriptors, for instance)
-			x_dim = self._x_dim
-
+		# calculate the dimensionality
+		x_dim = 0
+		for param in self.param_space:
+			if param.type in ['continuous', 'discrete']:
+				x_dim += 1
+			elif param.type == 'categorical':
+				if param.descriptors[0] is not None:
+					# we have descriptors
+					x_dim += len(param.descriptors[0])
+				else:
+					# we dont have descritpors, one hot encodings
+					x_dim += len(param.options)
 
 		self.model = DKT(
 			x_dim=x_dim,
@@ -239,6 +258,8 @@ class DKTPlanner(CustomPlanner, Logger):
 			model_path=self.model_path,
 			hyperparams=self.hyperparams,
 		)
+
+
 
 	def _meta_train(self):
 		''' train the model on the source tasks before commencing the
@@ -260,13 +281,15 @@ class DKTPlanner(CustomPlanner, Logger):
 
 
 	def _tell(self, observations):
-		''' register all the current observations
+		''' unpack the current observations from Olympus
+		Args:
+			observations (obj): Olympus campaign observations object
 		'''
-		self._params = observations.get_params() # string encoding for categorical parameters
-		self._values = observations.get_values(
-			as_array=True, opposite=self.flip_measurements,
-		)
-		# make the values 2d if they are not already
+		# elif type(observations) == olympus.campaigns.observations.Observations:
+		self._params = observations.get_params() # string encodings of categorical params
+		self._values = observations.get_values(as_array=True, opposite=self.flip_measurements)
+
+		# make values 2d if they are not already
 		if len(np.array(self._values).shape)==1:
 			self._values = np.array(self._values).reshape(-1, 1)
 
@@ -301,7 +324,7 @@ class DKTPlanner(CustomPlanner, Logger):
 				sample_x = []
 				for param_ix, (space_true, element) in enumerate(zip(self.param_space, targ_param)):
 					if self.param_space[param_ix].type == 'categorical':
-						feat = self._cat_param_to_feat(space_true, element)
+						feat = cat_param_to_feat(space_true, element)
 						sample_x.extend(feat)
 					else:
 						sample_x.append(np.float(element))
