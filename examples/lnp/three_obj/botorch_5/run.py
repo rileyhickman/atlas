@@ -20,8 +20,8 @@ from atlas.optimizers.gp.planner import BoTorchPlanner
 
 
 budget = 160
-num_repeats = 20
-batch_size = 32
+num_repeats = 40
+batch_size = 5
 
 data_all_repeats = []
 
@@ -84,5 +84,5 @@ for num_repeat in range(num_repeats):
 	data = pd.DataFrame(cols)
 	data_all_repeats.append(data)
 
-	pickle.dump(data_all_repeats, open(f'results/results_botorch_batch_{batch_size}_init.pkl', 'wb'))
+	pickle.dump(data_all_repeats, open(f'results.pkl', 'wb'))
 

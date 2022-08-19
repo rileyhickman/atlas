@@ -14,7 +14,7 @@ from olympus.surfaces import Surface
 from olympus.scalarizers import Scalarizer
 from olympus.datasets import Dataset
 from olympus.emulators import Emulator
-from olympus.planners import RandomSearch
+from olympus.planners import Grid
 
 
 budget = 243
@@ -35,7 +35,7 @@ for num_repeat in range(num_repeats):
 	campaign.set_param_space(dataset.param_space)
 	campaign.set_value_space(dataset.value_space)
 
-	planner = RandomSearch(goal='minimize')
+	planner = Grid(goal='minimize', levels=3, shuffle=True, exceed_budget=True)
 	planner.set_param_space(dataset.param_space)
 
 	scalarizer = Scalarizer(
@@ -77,5 +77,5 @@ for num_repeat in range(num_repeats):
 	data = pd.DataFrame(cols)
 	data_all_repeats.append(data)
 
-	pickle.dump(data_all_repeats, open('results/results_random.pkl', 'wb'))
+	pickle.dump(data_all_repeats, open('results.pkl', 'wb'))
 
