@@ -3,6 +3,28 @@
 import numpy as np
 
 
+def param_vector_to_dict(param_vector, param_names, param_options, param_types):
+    """parse single sample and return a dict"""
+    param_dict = {}
+    for param_index, param_name in enumerate(param_names):
+        param_type = param_types[param_index]
+
+        if param_type == 'continuous':
+            param_dict[param_name] = param_vector[param_index]
+
+        elif param_type == 'categorical':
+            options = param_options[param_index]
+            selected_option_idx = int(param_vector[param_index])
+            selected_option = options[selected_option_idx]
+            param_dict[param_name] = selected_option
+
+        elif param_type == 'discrete':
+            options = param_options[param_index]
+            selected_option_idx = int(param_vector[param_index])
+            selected_option = options[selected_option_idx]
+            param_dict[param_name] = selected_option
+    return param_dict
+    
 
 def flip_source_tasks(source_tasks):
     ''' flip the sign of the source tasks if the

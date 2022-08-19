@@ -182,6 +182,7 @@ def run_mixed(init_design_strategy):
 
 
 if __name__ == '__main__':
-	#test_continuous()
-	test_categorical()
-	#test_mixed()
+	pass
+	# run_continuous('lhs')
+	# run_categorical('random')
+	# run_mixed('random')
