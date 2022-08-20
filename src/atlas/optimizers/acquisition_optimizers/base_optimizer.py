@@ -7,7 +7,7 @@ from atlas import Logger
 from atlas.optimizers.acquisition_optimizers.genetic_optimizer import GeneticOptimizer
 from atlas.optimizers.acquisition_optimizers.gradient_optimizer import GradientOptimizer
 
-from atlas.optimizers.gp.utils import (
+from atlas.optimizers.utils import (
 	cat_param_to_feat,
 	propose_randomly,
 	forward_normalize,

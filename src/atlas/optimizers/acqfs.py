@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 
-
-#!/usr/bin/env python
-
 from copy import deepcopy
 import itertools
 import numpy as np
@@ -11,10 +8,206 @@ import pandas as pd
 import torch
 import gpytorch
 from botorch.acquisition import AcquisitionFunction, ExpectedImprovement
+from botorch.acquisition.monte_carlo import qExpectedImprovement, qNoisyExpectedImprovement
 
-from .utils import forward_normalize, propose_randomly, cat_param_to_feat
+from atlas.optimizers.utils import forward_normalize, propose_randomly, cat_param_to_feat
 
 from copy import deepcopy
+
+class FeasibilityAwareGeneral(AcquisitionFunction):
+	''' Abstract feasibilty aware general purpose optimization acquisition function.
+	Compatible 
+
+	'''
+	def __init__(
+		self,
+		reg_model,
+		cla_model,
+		cla_likelihood,
+		general_parmeters,
+		param_space,
+		best_f,
+		feas_strategy,
+		feas_param,
+		infeas_ratio,
+		acqf_min_max,
+		use_p_feas_only=False,
+		objective=None,
+		maximize=False,
+		**kwargs,
+	) -> None:
+		super().__init__(reg_model, **kwargs)
+		self.best_f = best_f
+		self.reg_model = reg_model
+		self.cla_model = cla_model
+		self.cla_likelihood = cla_likelihood
+		self.general_parmeters = general_parmeters
+		self.param_space = param_space
+		self.feas_strategy = feas_strategy
+		self.feas_param = feas_param
+		self.infeas_ratio = infeas_ratio
+		self.acqf_min_max = acqf_min_max
+		self.use_p_feas_only = use_p_feas_only
+		self.maximize = maximize
+
+
+	def forward(self, X):
+		best_f = self.best_f.to(X)
+		X_sns = self.generate_s_n(X)
+		pred_mu_x, pred_sigma_x = [], [] 
+
+		for X_sn in X_sns:
+			posterior = self.reg_model.posterior(X_sn.double())
+			mu = posterior.mean
+			view_shape = mu.shape[:-2] if mu.shape[-2] == 1 else mu.shape[:-1]
+			mu = mu.view(view_shape)
+			sigma = posterior.variance.clamp_min(1e-9).sqrt().view(view_shape)
+			pred_mu_x.append(mu)
+			pred_sigma_x.append(sigma)
+
+		pred_mu_x = torch.stack(pred_mu_x) 
+		pred_sigma_x = torch.stack(pred_sigma_x)
+
+		mu_x = torch.mean(pred_mu_x, 0)
+		sigma_x = torch.mean(pred_sigma_x, 0) 
+
+		u = (mu_x - best_f.expand_as(mu_x)) / sigma_x 
+		if not self.maximize:
+			u = -u
+		normal = torch.distributions.Normal(torch.zeros_like(u), torch.ones_like(u))
+		ucdf = normal.cdf(u)
+		updf = torch.exp(normal.log_prob(u))
+		ei = sigma * (updf + u * ucdf)
+
+		return ei
+
+
+
+	def generate_s_n(self, X):
+		
+		X_sns = []
+		options_ = self.param_space[0].options
+		for option in options_:
+			feat = cat_param_to_feat(self.param_space[0], option)
+			X[:, :, :len(options_)] = torch.tensor(feat) 
+			X_sns.append(X)
+
+		X_sns = torch.stack(X_sns)
+
+		return X_sns
+
+
+
+
+	def compute_feas_post(self, X):
+		''' computes the posterior P(feasible|X)
+		Args:
+			X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
+		'''
+		with gpytorch.settings.cholesky_jitter(1e-1):
+			return self.cla_likelihood(self.cla_model(X.float().squeeze(1))).mean
+
+
+	def compute_combined_acqf(self, acqf, p_feas):
+		''' compute the combined acqusition function
+		'''
+		if self.feas_strategy == 'fwa':
+			return acqf * p_feas
+		elif self.feas_strategy == 'fca':
+			return acqf
+		elif self.feas_strategy == 'fia':
+			return ((1 - self.infeas_ratio)**self.feas_param * acqf) + ((self.infeas_ratio**self.feas_param)*p_feas)
+		elif 'naive-' in self.feas_strategy:
+			if self.use_p_feas_only:
+				return p_feas
+			else:
+				return acqf
+		else:
+			raise NotImplementedError
+
+
+
+class FeasibilityAwareQEI(qExpectedImprovement):
+	''' Abstract feasibility aware expected improvement acquisition function. Compatible
+	with the FIA, FCA and FWA strategies, as well as any of the naive strategies.
+	Args:
+		reg_model (gpytorch.models.ExactGP): gpytorch regression surrogate GP model
+		cla_model (gpytorch.models.ApproximateGP): gpytorch variational GP for fesibility surrogate
+		cla_likelihood (gpytorch.likelihoods.BernoulliLikelihood): gpytorch Bernoulli likelihood
+		best_f (torch.tensor): incumbent point
+		feas_strategy (str): feasibility acqusition function name
+		feas_param (float): feasibilty parameter (called "t" in the paper)
+		infeas_ratio (float): the quotient of number of infeasible points with total points
+		objective ():
+		maximize (bool): whether the problem is maximization
+	'''
+	def __init__(
+		self,
+		reg_model,
+		cla_model,
+		cla_likelihood,
+		param_space,
+		best_f,
+		feas_strategy,
+		feas_param,
+		infeas_ratio,
+		acqf_min_max,
+		use_p_feas_only=False,
+		objective=None,
+		maximize=False,
+		**kwargs,
+	) -> None:
+		super().__init__(reg_model, best_f, objective=objective, maximize=maximize, **kwargs)
+		self.reg_model = reg_model
+		self.cla_model = cla_model
+		self.cla_likelihood = cla_likelihood
+		self.param_space = param_space
+		self.feas_strategy = feas_strategy
+		self.feas_param = feas_param
+		self.infeas_ratio = infeas_ratio
+		self.acqf_min_max = acqf_min_max
+		self.use_p_feas_only = use_p_feas_only
+
+	def forward(self, X):
+		acqf = super().forward(X) # get the EI acquisition
+		# approximately normalize the EI acquisition function
+		acqf = (acqf - self.acqf_min_max[0]) / (self.acqf_min_max[1]-self.acqf_min_max[0])
+		# p_feas should be 1 - P(feasible|X) because EI is
+		# maximized by default
+		if not 'naive-' in self.feas_strategy:
+			p_feas = 1. - self.compute_feas_post(X)
+		else:
+			p_feas = 1.
+
+		return self.compute_combined_acqf(acqf, p_feas)
+
+	def compute_feas_post(self, X):
+		''' computes the posterior P(feasible|X)
+		Args:
+			X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
+		'''
+		with gpytorch.settings.cholesky_jitter(1e-1):
+			return self.cla_likelihood(self.cla_model(X.float().squeeze(1))).mean
+
+
+	def compute_combined_acqf(self, acqf, p_feas):
+		''' compute the combined acqusition function
+		'''
+		if self.feas_strategy == 'fwa':
+			return acqf * p_feas
+		elif self.feas_strategy == 'fca':
+			return acqf
+		elif self.feas_strategy == 'fia':
+			return ((1 - self.infeas_ratio)**self.feas_param * acqf) + ((self.infeas_ratio**self.feas_param)*p_feas)
+		elif 'naive-' in self.feas_strategy:
+			if self.use_p_feas_only:
+				return p_feas
+			else:
+				return acqf
+		else:
+			raise NotImplementedError
+
+
 
 
 class FeasibilityAwareEI(ExpectedImprovement):
@@ -36,6 +229,7 @@ class FeasibilityAwareEI(ExpectedImprovement):
 		reg_model,
 		cla_model,
 		cla_likelihood,
+		param_space,
 		best_f,
 		feas_strategy,
 		feas_param,
@@ -50,12 +244,12 @@ class FeasibilityAwareEI(ExpectedImprovement):
 		self.reg_model = reg_model
 		self.cla_model = cla_model
 		self.cla_likelihood = cla_likelihood
+		self.param_space = param_space
 		self.feas_strategy = feas_strategy
 		self.feas_param = feas_param
 		self.infeas_ratio = infeas_ratio
 		self.acqf_min_max = acqf_min_max
 		self.use_p_feas_only = use_p_feas_only
-
 
 
 	def forward(self, X):
@@ -64,7 +258,10 @@ class FeasibilityAwareEI(ExpectedImprovement):
 		acqf = (acqf - self.acqf_min_max[0]) / (self.acqf_min_max[1]-self.acqf_min_max[0])
 		# p_feas should be 1 - P(feasible|X) because EI is
 		# maximized by default
-		p_feas = 1 - self.compute_feas_post(X)
+		if not 'naive-' in self.feas_strategy:
+			p_feas = 1. - self.compute_feas_post(X)
+		else:
+			p_feas = 1.
 
 		return self.compute_combined_acqf(acqf, p_feas)
 

@@ -10,7 +10,7 @@ from olympus import ParameterVector
 
 from atlas import Logger
 
-from atlas.optimizers.gp.utils import (
+from atlas.optimizers.utils import (
 	cat_param_to_feat,
 	propose_randomly,
 	forward_normalize,
@@ -24,7 +24,7 @@ from atlas.optimizers.gp.utils import (
 	get_fixed_features_list,
 )
 
-from atlas.optimizers.gp.acqfs import (
+from atlas.optimizers.acqfs import (
 	get_batch_initial_conditions, 
 	create_available_options,
 )
@@ -71,6 +71,7 @@ class GradientOptimizer():
 			results = self._optimize_mixed()
 		elif self.problem_type == 'fully_categorical':
 			results = self._optimize_fully_categorical()
+
 
 		return self.postprocess_results(results)
 
@@ -232,10 +233,9 @@ class GradientOptimizer():
 		else:
 			# reverse transform the inputs
 			results_np = results_torch.detach().numpy()
+			results_np = reverse_normalize(results_np, self._mins_x, self._maxs_x)
 			if len(results_np.shape) == 1:
 				results_np = results_np.reshape(1, -1)
-			results_np = reverse_normalize(results_np, self._mins_x, self._maxs_x)
-
 			samples = []
 			for sample_ix in range(results_np.shape[0]):
 				# project the sample back to Olympus format

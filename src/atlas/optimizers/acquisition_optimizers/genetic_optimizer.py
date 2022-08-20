@@ -5,7 +5,7 @@ import numpy as np
 
 from atlas import Logger
 
-from atlas.optimizers.optimizer_utils import param_vector_to_dict
+from atlas.optimizers.utils import param_vector_to_dict
 
 from deap import base, creator, tools
 from rich.progress import track

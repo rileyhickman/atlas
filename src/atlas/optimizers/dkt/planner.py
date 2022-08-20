@@ -5,47 +5,28 @@ import time
 import pickle
 
 import numpy as np
-import sobol_seq
-
 import torch
-from torch import nn
 import gpytorch
-from botorch.utils.sampling import draw_sobol_samples
-from botorch.utils.transforms import normalize, unnormalize
 
-from gpytorch.mlls import ExactMarginalLogLikelihood
-from botorch.models import SingleTaskGP
-from botorch.models import FixedNoiseGP
-from botorch.optim.fit import fit_gpytorch_torch
-from botorch.acquisition import ExpectedImprovement
 from botorch.fit import fit_gpytorch_model
+from botorch.optim import optimize_acqf, optimize_acqf_mixed, optimize_acqf_discrete
+from botorch.acquisition import ExpectedImprovement, qExpectedImprovement, qNoisyExpectedImprovement
 
-# RGPE model related imports
 from botorch.models.gpytorch import GPyTorchModel
 from gpytorch.models import GP
 from gpytorch.distributions import MultivariateNormal
-from gpytorch.lazy import PsdSumLazyTensor
-from gpytorch.likelihoods import LikelihoodList
-from torch.nn import ModuleList
 
-# from botorch.acquisition.monte_carlo import qExpectedImprovement
-from botorch.sampling.samplers import SobolQMCNormalSampler
-from botorch.optim.optimize import optimize_acqf, optimize_acqf_mixed, optimize_acqf_discrete
-
-from botorch.utils.transforms import convert_to_target_pre_hook, t_batch_mode_transform
-
-
+import olympus
 from olympus.planners import CustomPlanner, AbstractPlanner
 from olympus import ParameterVector
+from olympus.scalarizers import Scalarizer																															 
+from olympus.planners import Planner
 
-
-from atlas.utils import Logger
 
 from atlas.networks.dkt.dkt import DKT
 
-from atlas.optimizers.optimizer_utils import Scaler, flip_source_tasks
 
-from atlas.optimizers.gp.utils import (
+from atlas.optimizers.utils import (
 	cat_param_to_feat,
 	propose_randomly,
 	forward_normalize,
@@ -57,18 +38,25 @@ from atlas.optimizers.gp.utils import (
 	get_bounds,
 	get_cat_dims,
 	get_fixed_features_list,
+	Scaler, 
+	flip_source_tasks
 )
 
+from atlas import Logger
+from atlas.optimizers.acquisition_optimizers.base_optimizer import AcquisitionOptimizer
 
-from atlas.optimizers.gp.gps import ClassificationGP, CategoricalSingleTaskGP
+from atlas.optimizers.gps import ClassificationGP, CategoricalSingleTaskGP
 
-from atlas.optimizers.gp.acqfs import (
+from atlas.optimizers.acqfs import (
 	FeasibilityAwareEI, 
 	FeasibilityAwareQEI,
 	FeasibilityAwareGeneral, 
 	get_batch_initial_conditions, 
 	create_available_options,
 )
+
+from atlas.optimizers.base import BasePlanner
+
 
 
 class DKTModel(GP, GPyTorchModel):
@@ -79,8 +67,8 @@ class DKTModel(GP, GPyTorchModel):
 	def __init__(self, model, context_x, context_y):
 		super().__init__()
 		self.model = model
-		self.context_x = context_x
-		self.context_y = context_y
+		self.context_x = context_x.float()
+		self.context_y = context_y.float()
 
 	def forward(self, x):
 		'''
@@ -88,6 +76,7 @@ class DKTModel(GP, GPyTorchModel):
 			mean shape (# proposals, # params)
 			covar shape (# proposals, q_batch_size, # params)
 		'''
+		x = x.float()
 		_, __, likelihood = self.model.forward(self.context_x, self.context_y, x)
 		mean = likelihood.mean
 		covar = likelihood.lazy_covariance_matrix
@@ -96,9 +85,7 @@ class DKTModel(GP, GPyTorchModel):
 
 
 
-
-
-class DKTPlanner(CustomPlanner, Logger):
+class DKTPlanner(BasePlanner):
 	''' Wrapper for deep kernel transfer planner in a closed loop
 	optimization setting
 	'''
@@ -132,74 +119,19 @@ class DKTPlanner(CustomPlanner, Logger):
 		moo_params={},
 		goals=None,
 		**kwargs,
-		):
-		'''
-			Args:
-		'''
-		AbstractPlanner.__init__(**locals())
-		Logger.__init__(self, 'DKTPlanner', verbosity=2)
+	):
+
+		local_args = {key:val for key, val in locals().items() if key != 'self'}
+		super().__init__(**local_args)
+
+		# meta learning stuff
 		self.is_trained = False
-
-		self.goal = goal
-		self.feas_strategy = feas_strategy
-		self.feas_param = feas_param
-		self.batch_size = batch_size
-		if random_seed is None:
-			self.random_seed = np.random.randint(0, int(10e6))
-		else:
-			self.random_seed = random_seed
-		np.random.seed(self.random_seed)
-
-		self.num_init_design = num_init_design
-		self.init_design_strategy = init_design_strategy
-		self.vgp_iters = vgp_iters
-		self.vgp_lr = vgp_lr
-		self.max_jitter = max_jitter
-		self.cla_threshold = cla_threshold
-		self.known_constraints = known_constraints
-		self.general_parmeters = general_parmeters
 		self.warm_start = warm_start
 		self.model_path = model_path
 		self.from_disk = from_disk
-		self.train_tasks = train_tasks
-		self.valid_tasks = valid_tasks
+		self._train_tasks = train_tasks
+		self._valid_tasks = valid_tasks
 		self.hyperparams = hyperparams
-
-		self.is_moo = is_moo
-		self.value_space = value_space
-		self.scalarizer_kind = scalarizer_kind
-		self.moo_params = moo_params
-		self.goals = goals
-
-		# check multiobjective stuff
-		if self.is_moo:
-			if self.goals is None:
-				message = f'You must individual goals for multiobjective optimization'
-				Logger.log(message, 'FATAL')
-
-			if self.goal == 'maximize':
-				message = 'Overall goal must be set to minimization for multiobjective optimization. Updating ...'
-				Logger.log(message, 'WARNING')
-				self.goal = 'minimize'
-
-			self.scalarizer = Scalarizer(
-				kind=self.scalarizer_kind, value_space=self.value_space, goals=self.goals, **self.moo_params
-			)
-
-
-		# treat the inital design arguments
-		if self.init_design_strategy == 'random':
-			self.init_design_planner = olympus.planners.RandomSearch(goal=self.goal)
-		elif self.init_design_strategy == 'sobol':
-			self.init_design_planner = olympus.planners.Sobol(goal=self.goal, budget=self.num_init_design)
-		elif self.init_design_strategy == 'lhs': 
-			self.init_design_planner = olympus.planners.LatinHypercube(goal=self.goal, budget=self.num_init_design)
-		else:
-			message = f'Initial design strategy {self.init_design_strategy} not implemented'
-			Logger.log(message, 'FATAL')
-
-		self.num_init_design_completed = 0
-
 
 		# # NOTE: for maximization, we must flip the signs of the
 		# source task values before scaling them
@@ -207,33 +139,24 @@ class DKTPlanner(CustomPlanner, Logger):
 			self._train_tasks = flip_source_tasks(self._train_tasks)
 			self._valid_tasks = flip_source_tasks(self._valid_tasks)
 
+		# if we have a multi-objective problem, scalarize the values
+		# for the source tasks individually
+		if self.is_moo:
+			for task in self._train_tasks:
+				scal_values = self.scalarizer.scalarize(task['values'])
+				task['values'] = scal_values.reshape(-1, 1)
+
+			for task in self._valid_tasks:
+				scal_values = self.scalarizer.scalarize(task['values'])
+				task['values'] = scal_values.reshape(-1, 1)
+
 		# instantiate the scaler
 		self.scaler = Scaler(
-			param_type=self.param_scaling,
-			value_type=self.value_scaling,
+			param_type='normalization',
+			value_type='standardization',
 		)
 		self._train_tasks = self.scaler.fit_transform_tasks(self._train_tasks)
 		self._valid_tasks = self.scaler.transform_tasks(self._valid_tasks)
-
-
-	def _set_param_space(self, param_space):
-		''' set the Olympus parameter space (not actually really needed)
-		'''
-		# infer the problem type
-		self.problem_type = infer_problem_type(self.param_space)
-
-		# make attribute that indicates wether or not we are using descriptors for
-		# categorical variables
-		if self.problem_type == 'fully_categorical':
-			descriptors = []
-			for p in self.param_space:
-				descriptors.extend(p.descriptors)
-			if all(d is None for d in descriptors):
-				self.has_descriptors = False
-			else:
-				self.has_descriptors = True
-		else:
-			self.has_descriptors = False
 
 
 
@@ -260,7 +183,6 @@ class DKTPlanner(CustomPlanner, Logger):
 		)
 
 
-
 	def _meta_train(self):
 		''' train the model on the source tasks before commencing the
 		target optimization
@@ -270,224 +192,200 @@ class DKTPlanner(CustomPlanner, Logger):
 
 		if not self.from_disk:
 			# need to meta train
-			self.log('DKT model has not been meta-trained! Commencing meta-training procedure', 'WARNING')
+			Logger.log('DKT model has not been meta-trained! Commencing meta-training procedure', 'WARNING')
 			start_time = time.time()
 			self.model.train(self._train_tasks, self._valid_tasks)
 			training_time = time.time()-start_time
-			self.log(f'Meta-training procedure complete in {training_time:.2f} seconds', 'INFO')
+			Logger.log(f'Meta-training procedure complete in {training_time:.2f} seconds', 'INFO')
 		else:
 			# already meta trained, load from disk
-			self.log(f'Neural process model restored! Skipping meta-training procedure', 'INFO')
-
-
-	def _tell(self, observations):
-		''' unpack the current observations from Olympus
-		Args:
-			observations (obj): Olympus campaign observations object
-		'''
-		# elif type(observations) == olympus.campaigns.observations.Observations:
-		self._params = observations.get_params() # string encodings of categorical params
-		self._values = observations.get_values(as_array=True, opposite=self.flip_measurements)
-
-		# make values 2d if they are not already
-		if len(np.array(self._values).shape)==1:
-			self._values = np.array(self._values).reshape(-1, 1)
-
+			Logger.log(f'Neural process model restored! Skipping meta-training procedure', 'INFO')
 
 
 	def _ask(self):
-		''' Query the planner for new parameter points to measure
+		''' query the planner for a batch of new parameter points to measure
 		'''
-		iteration = len(self._values) # only valid for  batch_size=1
 
-		# if this is the first iteration, train the source models and
-		# randomly select the initial point from the param space
-
-		if len(self._values) < self.num_init_design:
-			# need to sample randomly
-
-			# meta train the DKT model
-			if not hasattr(self, 'model'):
+		# check in the reg model has been meta-trained
+		if not hasattr(self, 'model'):
 				self._meta_train()
 
-			_, samples = propose_randomly(1, self.param_space)
-			sample = samples[0]
-			return_params = ParameterVector().from_array(sample, self.param_space)
+		# if we have all nan values, just keep randomly sampling
+		if np.logical_or(
+			len(self._values) < self.num_init_design,  
+			np.all(np.isnan(self._values))
+		):
 
+
+			# set parameter space for the initial design planner
+			self.init_design_planner.set_param_space(self.param_space)
+
+			# sample using initial design strategy (with same batch size)
+			return_params = []
+			for _ in range(self.batch_size):
+				# TODO: this is pretty sloppy - consider standardizing this
+				if self.init_design_strategy == 'random':
+					self.init_design_planner._tell(iteration=self.num_init_design_completed)
+				else:
+					self.init_design_planner.tell()
+				rec_params = self.init_design_planner.ask()
+				if isinstance(rec_params, list):
+					return_params.append(rec_params[0])
+				elif isinstance(rec_params, ParameterVector):
+					return_params.append(rec_params)
+				else:
+					raise TypeError
+				self.num_init_design_completed += 1 # batch_size always 1 for init design planner
 		else:
-			# we have enough observations to exceed the
+			# use GP surrogate to propose the samples
+			# get the scaled parameters and values for both the regression and classification data
+			self.train_x_scaled_cla, self.train_y_scaled_cla, self.train_x_scaled_reg, self.train_y_scaled_reg = self.build_train_data()
 
-			# convert the categorical parmas to ohe vars
-			target_params = []
-			target_values = []
-			for sample_ix, (targ_param, targ_value) in enumerate(zip(self._params, self._values)):
-				sample_x = []
-				for param_ix, (space_true, element) in enumerate(zip(self.param_space, targ_param)):
-					if self.param_space[param_ix].type == 'categorical':
-						feat = cat_param_to_feat(space_true, element)
-						sample_x.extend(feat)
+			use_p_feas_only = False
+			# check to see if we are using the naive approaches
+			if 'naive-' in self.feas_strategy:
+				infeas_ix = torch.where(self.train_y_scaled_cla==1.)[0]
+				feas_ix = torch.where(self.train_y_scaled_cla==0.)[0]
+				# checking if we have at least one objective function measurement
+				#  and at least one infeasible point (i.e. at least one point to replace)
+				if np.logical_and(
+					self.train_y_scaled_reg.size(0) >= 1,
+					infeas_ix.shape[0] >= 1
+				):
+					if self.feas_strategy == 'naive-replace':
+						# NOTE: check to see if we have a trained regression surrogate model
+						# if not, wait for the following iteration to make replacements
+						if hasattr(self, 'reg_model'):
+							# if we have a trained regression model, go ahead and make replacement
+							new_train_y_scaled_reg = deepcopy(self.train_y_scaled_cla).double()
+
+							input = self.train_x_scaled_cla[infeas_ix].double()
+
+							posterior = self.reg_model.posterior(X=input)
+							pred_mu = posterior.mean.detach()
+
+							new_train_y_scaled_reg[infeas_ix] = pred_mu.squeeze(-1)
+							new_train_y_scaled_reg[feas_ix] = self.train_y_scaled_reg.squeeze(-1)
+
+							self.train_x_scaled_reg = deepcopy(self.train_x_scaled_cla).double()
+							self.train_y_scaled_reg = new_train_y_scaled_reg.view(self.train_y_scaled_cla.size(0), 1).double()
+
+						else:
+							use_p_feas_only = True
+
+					elif self.feas_strategy == 'naive-0':
+						new_train_y_scaled_reg = deepcopy(self.train_y_scaled_cla).double()
+
+						worst_obj = torch.amax(self.train_y_scaled_reg[~self.train_y_scaled_reg.isnan()])
+
+						to_replace = torch.ones(infeas_ix.size())*worst_obj
+
+						new_train_y_scaled_reg[infeas_ix] = to_replace.double()
+						new_train_y_scaled_reg[feas_ix] = self.train_y_scaled_reg.squeeze()
+
+						self.train_x_scaled_reg = self.train_x_scaled_cla.double()
+						self.train_y_scaled_reg = new_train_y_scaled_reg.view(self.train_y_scaled_cla.size(0), 1)
+
 					else:
-						sample_x.append(np.float(element))
-				target_params.append(sample_x)
-				target_values.append(targ_value)
-			target_params = np.array(target_params)  # (# target obs, # param dim)
-			target_values = np.array(target_values)  # (# target obs, 1)
+						raise NotImplementedError
+				else:
+					# if we are not able to use the naive strategies, propose randomly
+					# do nothing at all and use the feasibilty surrogate as the acquisition
+					use_p_feas_only = True
 
-			# compute the stats of the dataset replacing 0. stds with 1.
-			#means_x = [np.mean(target_params[:, ix]) for ix in range(target_params.shape[1])]
-			#stds_x = np.array( [np.std(target_params[:, ix]) for ix in range(target_params.shape[1])] )
-			#stds_x = np.where(stds_x == 0., 1., stds_x)
-			means_y = [np.mean(target_values[:, ix]) for ix in range(target_values.shape[1])]
-			stds_y = np.array(  [np.std(target_values[:, ix]) for ix in range(target_values.shape[1])] )
-			stds_y = np.where(stds_y == 0., 1., stds_y)
+			# builds and fits the regression surrogate model
+			# self.reg_model = self.build_train_regression_gp(self.train_x_scaled_reg, self.train_y_scaled_reg)
 
-			# scale the target data
-			#scaled_x = self.transform(target_params, means_x, stds_x)
-			# NOTE: do not need to scale the input parameters for categorical spaces
-			scaled_x = target_params
-			scaled_y = self.transform(target_values, means_y, stds_y)
+			# builds the regression model
+			self.reg_model = DKTModel(self.model, self.train_x_scaled_reg, self.train_y_scaled_reg)
 
-			train_x = torch.Tensor(scaled_x)
-			train_y = torch.Tensor(scaled_y)
+			if not 'naive-' in self.feas_strategy:
+				# build and train the classification surrogate model
+				self.cla_model, self.cla_likelihood = self.build_train_classification_gp(self.train_x_scaled_cla, self.train_y_scaled_cla)
 
-			# get the incumbent point --> always the minimum in olympus
-			fbest_scaled = torch.amin(
-				train_y[-target_values.shape[0]:]
-			)
-			maximize=False
+				self.cla_model.eval()
+				self.cla_likelihood.eval()
 
-			# create the model and acquisition function
-			dkt_model = DKTModel(self.model, train_x, train_y)
+			else:
+				self.cla_model, self.cla_likelihood = None, None
 
-			bounds = get_bounds(self.param_space, has_descriptors=False)
-			choices_feat, choices_cat = None, None
+			# get the incumbent point
+			f_best_argmin = torch.argmin(self.train_y_scaled_reg)
+			f_best_scaled = self.train_y_scaled_reg[f_best_argmin][0].float()
 
-			self.ei = CategoricalEI(
+			# compute the ratio of infeasible to total points
+			infeas_ratio = (torch.sum(self.train_y_scaled_cla) / self.train_x_scaled_cla.size(0)).item()
+			# get the approximate max and min of the acquisition function without the feasibility contribution
+			acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled)
+
+
+			if self.batch_size == 1:
+				self.acqf = FeasibilityAwareEI(
+					self.reg_model, self.cla_model, self.cla_likelihood,
+					self.param_space, f_best_scaled,
+					self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max,
+					) 
+			elif self.batch_size > 1:
+				self.acqf = FeasibilityAwareQEI(
+					self.reg_model, self.cla_model, self.cla_likelihood,
+					self.param_space, f_best_scaled,
+					self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max
+				)
+
+
+			bounds = get_bounds(self.param_space, self._mins_x, self._maxs_x, self.has_descriptors)
+
+
+			print('PROBLEM TYPE : ', self.problem_type)
+
+			#-------------------------------
+			# optimize acquisition function
+			#-------------------------------
+
+			acquisition_optimizer = AcquisitionOptimizer(
+				self.acquisition_optimizer_kind,
 				self.param_space,
-				dkt_model,
-				best_f=fbest_scaled,
-				maximize=maximize,
-
+				self.acqf,
+				bounds,
+				self.known_constraints,
+				self.batch_size,
+				self.feas_strategy,
+				self.fca_constraint,
+				self.has_descriptors,
+				self._params,
+				self._mins_x,
+				self._maxs_x,
 			)
-
-			if self.problem_type == 'fully_continuous':
-
-				results, _ = optimize_acqf(
-					acq_function=self.ei,
-					bounds=bounds,
-					num_restarts=200,
-					q=1,
-					raw_samples=1000,
-					nonlinear_inequality_constraints=None,
-					batch_initial_conditions=None,
-				)
-
-			elif self.problem_type == 'mixed':
-				results, _ = optimize_acqf_mixed(
-					acq_function=self.ei,
-					bounds=bounds,
-					num_restarts=200,
-					q=1,
-					raw_samples=1000,
-				)
-
-			elif self.problem_type == 'fully_categorical':
-
-				# need to generate the full space of potential choices
-				choices_feat, choices_cat = create_available_options(self.param_space, self._params)
-
-				# no need to transform anything here
-				results, _ = optimize_acqf_discrete(
-					acq_function=self.ei,
-					q=1,
-					max_batch_size=1000,
-					choices=choices_feat.float(),
-					unique=True,
-				)
-
-			results_np = results.detach().numpy().squeeze(0)
-
-			# if not self.problem_type == 'fully_categorical':
-			# 	results_np = self.reverse_transform(results_np, means_y, stds_y)
-
-			# print('results_np : ', results_np )
-
-			# project the sample back to Olympus
-			sample = project_to_olymp(
-				results_np, self.param_space, has_descriptors=False,
-				choices_feat=choices_feat, choices_cat=choices_cat,
-			)
-
-			return_params = ParameterVector().from_dict(sample, self.param_space)
-
-			# print('results_np : ', results_np )
-			# print('sample :', sample)
-			# print('return_params : ', return_params)
-			#
-			# quit()
-
+			return_params = acquisition_optimizer.optimize()
 
 		return return_params
 
 
-		# TODO: try normalization here as oppose to standardization
-	def transform(self, data, means, stds):
-		''' standardize the data
+	def get_aqcf_min_max(self, reg_model, f_best_scaled, num_samples=2000):
+		''' computes the min and max value of the acquisition function without
+		the feasibility contribution. These values will be used to approximately
+		normalize the acquisition function
 		'''
-		return (data - means) / stds
+		if self.batch_size == 1:
+			acqf = ExpectedImprovement(reg_model, f_best_scaled, objective=None, maximize=False)
+		elif self.batch_size > 1:
+			acqf = qExpectedImprovement(reg_model, f_best_scaled, objective=None, maximize=False)
+		samples, _ = propose_randomly(num_samples, self.param_space)
+		if not self.problem_type=='fully_categorical' and not self.has_descriptors:
+			# we dont scale the parameters if we have a one-hot-encoded representation
+			samples = forward_normalize(samples, self._mins_x, self._maxs_x)
 
-	def reverse_transform(self, data, means, stds):
-		''' un-standardize the data
-		'''
-		return (data * stds) + means
+		acqf_vals = acqf(
+			torch.tensor(samples).view(samples.shape[0], 1, samples.shape[-1]).double()
+		)
+		min_ = torch.amin(acqf_vals).item()
+		max_ = torch.amax(acqf_vals).item()
 
+		if np.abs( max_ - min_ ) < 1e-6:
+			max_ = 1.0
+			min_ = 0.0
 
-
-
-class CategoricalEI(ExpectedImprovement):
-	def __init__(
-		self,
-		param_space,
-		model,
-		best_f,
-		objective=None,
-		maximize=False,
-		**kwargs,
-	) -> None:
-		super().__init__(model, best_f, objective, maximize, **kwargs)
-		self._param_space = param_space
-
-	def forward(self, X):
-		#X = self.round_to_one_hot(X, self._param_space)
-		ei = super().forward(X)
-		return ei
-
-	@staticmethod
-	def round_to_one_hot(X, param_space):
-		'''
-		Round all categorical variables to a one-hot encoding
-		X shape (# raw_samples, # recommendations, # param dimensions)
-		'''
-		num_experiments = X.shape[1]
-		X = X.clone()
-		for q in range(num_experiments):
-			c = 0
-			for param in param_space:
-				if param.type == 'categorical':
-					num_options = len(param.options)
-					selected_options = X[:, q, c : c + num_options].argmax(axis=1)
-					X[:, q, c : c + num_options] = 0
-					for j, l in zip(range(X.shape[0]), selected_options):
-						X[j, q, int(c + l)] = 1
-					check = int(X[:, q, c : c + num_options].sum()) == X.shape[0]
-					if not check:
-						quit()
-					c += num_options
-				else:
-					# continuous or discrete (??) parameter types
-					c += 1
-		return X
-
+		return min_, max_
 
 
 
