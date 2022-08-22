@@ -89,7 +89,7 @@ class RGPE(GP, GPyTorchModel):
 				)
 		self.likelihood = LikelihoodList(*[m.likelihood for m in models])
 		self.weights = weights
-		self.to(weights)
+		#self.to(weights)
 
 	def forward(self, x):
 		x = x.float()
