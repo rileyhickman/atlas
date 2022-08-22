@@ -55,7 +55,7 @@ surface = gprice
 MODELS = [
 	'RandomSearch',
 	#'Gpyopt',
-	'Botorch'
+	'Botorch',
 	'RGPE',
 	'DKT',
 ]

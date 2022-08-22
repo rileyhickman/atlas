@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#SBATCH -J gprice_2d
+#SBATCH -J multfonseca_2d
 #SBATCH --ntasks=1
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task 4

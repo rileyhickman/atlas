@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#SBATCH -J buchwald_a
+#SBATCH -J buchwald_b
 #SBATCH --ntasks=1
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task 4

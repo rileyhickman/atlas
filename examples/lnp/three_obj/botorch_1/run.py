@@ -44,7 +44,7 @@ for num_repeat in range(num_repeats):
 		is_moo=True,
 		value_space=dataset.value_space,
 		batch_size=batch_size,
-		num_init_design=batch_size,
+		num_init_design=10,
 		scalarizer_kind='Hypervolume',
 		moo_params={},
 		goals=['max', 'max', 'min']
