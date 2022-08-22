@@ -136,6 +136,7 @@ class DKT():
         if len(context_y.shape)==2:
             context_y = torch.squeeze(context_y)
 
+
         # prime the deep kernel on the context set
         context_z = self.net(context_x).detach()
         self.gp.train()
@@ -174,20 +175,14 @@ class DKT():
 
             num_context = np.random.randint(low=2, high=int(0.7*num_target), size=None)
 
-            # print(num_context, num_target)
-
             context_x = params[:num_context, :]
             context_y = values[:num_context]
             target_x  = params[:num_target, :]
             target_y  = values[:num_target]
 
-            # print(context_x.shape, context_y.shape)
-            # print(target_x.shape, target_y.shape)
 
             num_repeats_context = (self.hp['model']['batch_size'] // num_context) + 1
             num_repeats_target = (self.hp['model']['batch_size'] // num_target) + 1
-
-            # print(num_repeats_context, num_repeats_target)
 
 
             context_x = torch.tile(context_x, (num_repeats_context, 1))[:self.hp['model']['batch_size'], :]
@@ -196,8 +191,6 @@ class DKT():
             target_x = torch.tile(target_x, (num_repeats_target, 1))[:self.hp['model']['batch_size'], :]
             target_y = torch.tile(target_y, (num_repeats_target,))[:self.hp['model']['batch_size'], :].flatten()
 
-            # print(context_x.shape, context_y.shape)
-            # print(target_x.shape, target_y.shape)
 
         return context_x, context_y, target_x, target_y
 

@@ -9,8 +9,6 @@ from scipy.stats import pearsonr, spearmanr, norm
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-import GPy
-
 import olympus
 from olympus.surfaces import Surface
 
@@ -107,93 +105,93 @@ def gp_factory(
     return tasks
 
 
-def gp_kernel(kind='rbf'):
-    if kind == 'rbf':
-        kernel_fn = GPy.kern.RBF
-    elif kind == 'matern32':
-        kernel_fn = GPy.kern.Matern32
-    else:
-        raise NotImplementedError
+# def gp_kernel(kind='rbf'):
+#     if kind == 'rbf':
+#         kernel_fn = GPy.kern.RBF
+#     elif kind == 'matern32':
+#         kernel_fn = GPy.kern.Matern32
+#     else:
+#         raise NotImplementedError
 
-    return kernel_fn
+#     return kernel_fn
 
 
-def olymp_factory(
-    param_dim,  # dimension of the parameter space
-    surface_kind,       # name of the olympus surface
-    num_train, # number of training point for the fitted model
-    num_samples,  # the number of meta datasets to return for each case
-    corr_metric='spearman',  # pearson or spearman
-    corr_red='mean', # mean, max, min
-    num_sobol=1000,  # number of initial sobol points
-    fit_models=['gp_rbf', 'gp_matern32'],
-    seed=100700,
-):
-    ''' Generate perturbed Olympus surfaces where the oracle is the
-    ground truth surface
-    '''
-    # set random seed
-    np.random.seed(seed)
+# def olymp_factory(
+#     param_dim,  # dimension of the parameter space
+#     surface_kind,       # name of the olympus surface
+#     num_train, # number of training point for the fitted model
+#     num_samples,  # the number of meta datasets to return for each case
+#     corr_metric='spearman',  # pearson or spearman
+#     corr_red='mean', # mean, max, min
+#     num_sobol=1000,  # number of initial sobol points
+#     fit_models=['gp_rbf', 'gp_matern32'],
+#     seed=100700,
+# ):
+#     ''' Generate perturbed Olympus surfaces where the oracle is the
+#     ground truth surface
+#     '''
+#     # set random seed
+#     np.random.seed(seed)
 
-    # register olympus surface
-    surf = Surface(kind=surface_kind, param_dim=param_dim)
+#     # register olympus surface
+#     surf = Surface(kind=surface_kind, param_dim=param_dim)
 
-    # generate initial point with Sobol sequence
-    domain = sobol_seq.i4_sobol_generate(param_dim, num_sobol)
-    y_oracle = np.array(surf.run(domain))
+#     # generate initial point with Sobol sequence
+#     domain = sobol_seq.i4_sobol_generate(param_dim, num_sobol)
+#     y_oracle = np.array(surf.run(domain))
 
-    # sample a training set from the oracle points
-    indices = np.arange(y_oracle.shape[0])
-    np.random.shuffle(indices)
+#     # sample a training set from the oracle points
+#     indices = np.arange(y_oracle.shape[0])
+#     np.random.shuffle(indices)
 
-    indices = indices[:num_train]
+#     indices = indices[:num_train]
 
-    train_params = domain[indices, :]
-    train_values = domain[indices, :]
+#     train_params = domain[indices, :]
+#     train_values = domain[indices, :]
 
-    if num_samples % 2 == 0:
-        num_rbf, num_mat32 = num_samples//2, num_samples//2
-    elif num_samples %2 == 1:
-        num_rbf, num_mat32 = num_samples//2, num_samples//2 + 1
+#     if num_samples % 2 == 0:
+#         num_rbf, num_mat32 = num_samples//2, num_samples//2
+#     elif num_samples %2 == 1:
+#         num_rbf, num_mat32 = num_samples//2, num_samples//2 + 1
 
-    # train a GP with RBF
-    kernel=GPy.kern.RBF(input_dim=train_params.shape[0], variance=3.0, lengthscale=0.1)
-    model = GPy.models.GPRegression(train_params, train_values)
-    model.optimize_restarts(num_restarts=5)
+#     # train a GP with RBF
+#     kernel=GPy.kern.RBF(input_dim=train_params.shape[0], variance=3.0, lengthscale=0.1)
+#     model = GPy.models.GPRegression(train_params, train_values)
+#     model.optimize_restarts(num_restarts=5)
 
-    post_rbf_samples = model.posterior_samples_f(
-            domain, full_cov=True, size=num_rbf,
-        ).reshape((
-            num_rbf, domain.shape[0], param_dim
-        ))                                           # [num_samples, domain.shape[0], param_dim]
+#     post_rbf_samples = model.posterior_samples_f(
+#             domain, full_cov=True, size=num_rbf,
+#         ).reshape((
+#             num_rbf, domain.shape[0], param_dim
+#         ))                                           # [num_samples, domain.shape[0], param_dim]
 
-    # all_post_samples = np.concatenate((
-    #     post_rbf_samples, post_mat32_samples
-    # ))
-    all_post_samples = post_rbf_samples
+#     # all_post_samples = np.concatenate((
+#     #     post_rbf_samples, post_mat32_samples
+#     # ))
+#     all_post_samples = post_rbf_samples
 
-    tasks = []
-    corrs = []
-    for ix, sample in enumerate(all_post_samples):
-        # compute the surface value
-        z = np.array(surf.run(sample)).reshape(-1, 1)
-        if corr_metric == 'pearson':
-            p = pearsonr(y_oracle.ravel(), z.ravel())
-            corrs.append(p)
-        elif corr_metric == 'spearman':
-            s = spearmanr(y_oracle.ravel(), z.ravel())
-            corrs.append(s)
+#     tasks = []
+#     corrs = []
+#     for ix, sample in enumerate(all_post_samples):
+#         # compute the surface value
+#         z = np.array(surf.run(sample)).reshape(-1, 1)
+#         if corr_metric == 'pearson':
+#             p = pearsonr(y_oracle.ravel(), z.ravel())
+#             corrs.append(p)
+#         elif corr_metric == 'spearman':
+#             s = spearmanr(y_oracle.ravel(), z.ravel())
+#             corrs.append(s)
 
-        tasks.append({'params': sample, 'values': z})
+#         tasks.append({'params': sample, 'values': z})
 
-    corr_stats = {
-        'mean': np.mean(corrs),
-        'std': np.std(corrs),
-        'min': np.amin(corrs),
-        'max': np.amax(corrs),
-    }
+#     corr_stats = {
+#         'mean': np.mean(corrs),
+#         'std': np.std(corrs),
+#         'min': np.amin(corrs),
+#         'max': np.amax(corrs),
+#     }
 
-    return tasks, corr_stats
+#     return tasks, corr_stats
 
 
 
