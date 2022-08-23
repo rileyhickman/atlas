@@ -128,9 +128,10 @@ def test_continuous_weighted_sum():
 	)
 
 	scalarizer = Scalarizer(
-		kind='Parego',
+		scalarizer_kind='WeightedSum',
 		value_space=moo_surface.value_space,
-		goals=['min', 'max'],
+		moo_params={'weights': [2., 1.]},
+		goals=['min', 'max']
 	)
 
 	planner.set_param_space(moo_surface.param_space)
