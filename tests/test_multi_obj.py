@@ -15,6 +15,10 @@ from olympus.scalarizers import Scalarizer
 from atlas.optimizers.gp.planner import BoTorchPlanner
 
 
+SCALARIZERS = []
+BATCH_SIZES = [1, 2]
+
+
 def test_continuous_hypervolume():
 
 	moo_surface = Surface(kind='MultFonseca')

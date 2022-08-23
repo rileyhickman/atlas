@@ -13,7 +13,35 @@ from olympus.surfaces import Surface
 
 from atlas.optimizers.gp.planner import BoTorchPlanner
 
-def test_continuous_batched():
+
+INIT_DESIGN_STRATEGIES_CONT = ['random', 'sobol', 'lhs']
+
+INIT_DESIGN_STRATEGIES_CAT = ['random']
+
+INIT_DESIGN_STRATEGIES_MIXED = ['random']
+
+BATCH_SIZES = [2, 5, 10]
+
+@pytest.mark.parametrize('batch_size', BATCH_SIZES)
+@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_CONT)
+def test_init_design_cont(batch_size, init_design_strategy):
+	run_continuous_batched(batch_size, init_design_strategy)
+
+
+@pytest.mark.parametrize('batch_size', BATCH_SIZES)
+@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_CAT)
+def test_init_design_cat(batch_size, init_design_strategy):
+	run_categorical_batched(batch_size, init_design_strategy)
+
+@pytest.mark.parametrize('batch_size', BATCH_SIZES)
+@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_MIXED)
+def test_init_design_mixed(batch_size, init_design_strategy):
+	run_mixed_batched(batch_size, init_design_strategy)
+
+
+
+
+def run_continuous_batched(batch_size, init_design_strategy):
 
 	def surface(x):
 		return np.sin(8*x[0]) - 2*np.cos(6*x[1]) + np.exp(-2.*x[2])
@@ -29,9 +57,9 @@ def test_continuous_batched():
 	planner = BoTorchPlanner(
 		goal='minimize',
 		feas_strategy='naive-0',
-		init_design_strategy='lhs',
+		init_design_strategy=init_design_strategy,
 		num_init_design=4, 
-		batch_size=2,
+		batch_size=batch_size,
 	)
 
 	planner.set_param_space(param_space)
@@ -50,7 +78,7 @@ def test_continuous_batched():
 			campaign.add_observation(sample_arr, measurement)
 
 
-def test_categorical_batched():
+def run_categorical_batched(batch_size, init_design_strategy):
 
 	surface_kind = 'CatDejong'
 	surface = Surface(kind=surface_kind, param_dim=2, num_opts=21)
@@ -61,9 +89,9 @@ def test_categorical_batched():
 	planner = BoTorchPlanner(
 		goal='minimize',
 		feas_strategy='naive-0',
-		init_design_strategy='random',
+		init_design_strategy=init_design_strategy,
 		num_init_design=4, 
-		batch_size=2,
+		batch_size=batch_size,
 	)
 	planner.set_param_space(surface.param_space)
 
@@ -82,7 +110,7 @@ def test_categorical_batched():
 	assert len(campaign.observations.get_values())==BUDGET
 
 
-def test_mixed_batched():
+def run_mixed_batched(batch_size, init_design_strategy):
 
 	param_space = ParameterSpace()
 	# add ligand
@@ -125,9 +153,9 @@ def test_mixed_batched():
 	planner = BoTorchPlanner(
 					goal='maximize', 
 					feas_strategy='naive-0',
-					init_design_strategy='random',
+					init_design_strategy=init_design_strategy,
 					num_init_design=4, 
-					batch_size=2,
+					batch_size=batch_size,
 				)
 	planner.set_param_space(param_space)
 
