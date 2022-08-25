@@ -28,7 +28,7 @@ surface = Surface(kind=SURFACE_KIND)
 MODELS = [
 	'RandomSearch',
 	#'Gpyopt',
-	'Botorch'
+	'Botorch',
 	'RGPE',
 	'DKT',
 ]

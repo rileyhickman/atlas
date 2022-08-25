@@ -27,11 +27,11 @@ opt_x = ['x14', 'x10']
 #---------------
 
 MODELS = [
-	#'RandomSearch',
+	'RandomSearch',
 	#'Gpyopt',
-	#'Botorch',
-	#'RGPE',
-	'DKT',
+	'Botorch',
+	'RGPE',
+	#'DKT',
 ]
 
 META_PLANNERS = [
