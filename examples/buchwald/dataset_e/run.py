@@ -284,8 +284,6 @@ for model_kind in MODELS:
 
 					iteration += 1
 
-				
-
 			run_ix += 1
 
 		except Exception as e:
