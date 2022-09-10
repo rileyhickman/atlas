@@ -181,8 +181,11 @@ def project_to_olymp(
 		# TODO: this is kind of a hack, will fail in some cases...
 		# consider cleaning this up
 		bools = [torch.all(results.float()==choices_feat[i, :].float()) for i in range(choices_feat.shape[0])]
-		assert bools.count(True)==1
-		idx = np.where(bools)[0][0]
+		if bools.count(True)>=1:
+			idx = np.where(bools)[0][0]
+		else:
+			print('no matches ... ')
+			quit()
 		sample = choices_cat[idx]
 		for elem, name in zip(sample, [p.name for p in param_space]):
 			olymp_samples[name] = elem
@@ -220,6 +223,8 @@ def project_to_olymp(
 
 	return olymp_samples
 
+
+
 def get_closest_ohe(cat_vec):
 	''' return index of closest ohe vector
 	'''
@@ -250,10 +255,6 @@ def get_bounds(param_space, mins_x, maxs_x, has_descriptors):
 
 	return torch.tensor(np.array(bounds)).T.float()
 
-
-#!/usr/bin/env python
-
-import numpy as np
 
 
 def param_vector_to_dict(param_vector, param_names, param_options, param_types):

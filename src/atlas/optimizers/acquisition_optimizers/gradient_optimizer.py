@@ -176,7 +176,7 @@ class GradientOptimizer():
 		)
 		if self.has_descriptors:
 			self.choices_feat = forward_normalize(
-				choices_feat.detach().numpy(), self._mins_x, self._maxs_x,
+				self.choices_feat.detach().numpy(), self._mins_x, self._maxs_x,
 			)
 			self.choices_feat = torch.tensor(self.choices_feat)
 
@@ -219,14 +219,17 @@ class GradientOptimizer():
 			# works better for the lookup)
 			# project the sample back to Olympus format
 			samples = []
+			#results_np = results_torch.detach().numpy()
 			if len(results_torch.shape) == 1:
 				results_torch = results_torch.reshape(1, -1)
+			#results_np = reverse_normalize(results_np, self._mins_x, self._maxs_x)
 			for sample_ix in range(results_torch.shape[0]):
 				sample = project_to_olymp(
 					results_torch[sample_ix], 
 					self.param_space,
 					has_descriptors=self.has_descriptors,
-					choices_feat=self.choices_feat, choices_cat=self.choices_cat,
+					choices_feat=self.choices_feat, 
+					choices_cat=self.choices_cat,
 				)
 				samples.append(ParameterVector().from_dict(sample, self.param_space))
 
