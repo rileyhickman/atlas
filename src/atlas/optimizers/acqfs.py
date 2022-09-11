@@ -16,7 +16,7 @@ from copy import deepcopy
 
 class FeasibilityAwareGeneral(AcquisitionFunction):
 	''' Abstract feasibilty aware general purpose optimization acquisition function.
-	Compatible 
+	Compatible
 
 	'''
 	def __init__(
@@ -54,7 +54,7 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
 	def forward(self, X):
 		best_f = self.best_f.to(X)
 		X_sns = self.generate_s_n(X)
-		pred_mu_x, pred_sigma_x = [], [] 
+		pred_mu_x, pred_sigma_x = [], []
 
 		for X_sn in X_sns:
 			posterior = self.reg_model.posterior(X_sn.double())
@@ -65,13 +65,13 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
 			pred_mu_x.append(mu)
 			pred_sigma_x.append(sigma)
 
-		pred_mu_x = torch.stack(pred_mu_x) 
+		pred_mu_x = torch.stack(pred_mu_x)
 		pred_sigma_x = torch.stack(pred_sigma_x)
 
 		mu_x = torch.mean(pred_mu_x, 0)
-		sigma_x = torch.mean(pred_sigma_x, 0) 
+		sigma_x = torch.mean(pred_sigma_x, 0)
 
-		u = (mu_x - best_f.expand_as(mu_x)) / sigma_x 
+		u = (mu_x - best_f.expand_as(mu_x)) / sigma_x
 		if not self.maximize:
 			u = -u
 		normal = torch.distributions.Normal(torch.zeros_like(u), torch.ones_like(u))
@@ -84,12 +84,12 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
 
 
 	def generate_s_n(self, X):
-		
+
 		X_sns = []
 		options_ = self.param_space[0].options
 		for option in options_:
 			feat = cat_param_to_feat(self.param_space[0], option)
-			X[:, :, :len(options_)] = torch.tensor(feat) 
+			X[:, :, :len(options_)] = torch.tensor(feat)
 			X_sns.append(X)
 
 		X_sns = torch.stack(X_sns)
@@ -402,22 +402,40 @@ def create_available_options(param_space, params, constraint_callable):
 		params (list): parameters from the current Campaign
 		constraint_callable (callable):
 	'''
-	params = [list(elem) for elem in params]
+	# make sure params are proper data type
+	real_params = []
+	for param in params:
+		p = []
+		for ix, elem in enumerate(param):
+			if param_space[ix].type=='categorical':
+				p.append(elem)
+			else:
+				p.append(float(elem))
+		real_params.append(p)
+
+	# params = [list(elem) for elem in params]
+
 	param_names = [p.name for p in param_space]
 	param_options = [p.options for p in param_space]
 
+
 	cart_product = list(itertools.product(*param_options))
+
 	cart_product = [list(elem) for elem in cart_product]
 
 	# remove options that we have measured already
 	current_avail_feat  = []
 	current_avail_cat = []
+
 	for elem in cart_product:
-		if elem not in params:
+		if elem not in real_params:
 			# convert to ohe and add to currently available options
 			ohe = []
 			for val, obj in zip(elem, param_space):
-				ohe.append(cat_param_to_feat(obj, val))
+				if obj.type=='categorical':
+					ohe.append(cat_param_to_feat(obj, val))
+				else:
+					ohe.append([val])
 			current_avail_feat.append(np.concatenate(ohe))
 			current_avail_cat.append(elem)
 
@@ -443,5 +461,7 @@ def create_available_options(param_space, params, constraint_callable):
 	else:
 		current_avail_feat = current_avail_feat_unconst
 		current_avail_cat  = current_avail_cat_unconst
+
+	print('current avail feat shape : ', current_avail_feat.shape)
 
 	return current_avail_feat, current_avail_cat

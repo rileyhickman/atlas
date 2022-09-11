@@ -56,17 +56,17 @@ def measure(params, df):
 	print(params)
 
 	match = df[
-		(df['drug_input']==int(params[0]))&\
+		(df['drug_input']==int(float(params[0])))&\
 		(df['solid_lipid']==params[1])&\
-		(df['solid_lipid_input']==int(params[2]))&\
-		(df['liquid_lipid_input']==int(params[3]))&\
+		(df['solid_lipid_input']==int(float(params[2])))&\
+		(df['liquid_lipid_input']==int(float(params[3])))&\
 		(df['surfractant_input']==float(params[4]))
 	].to_dict('r')
 	assert len(match)==1
 	match = match[0]
 	return ParameterVector().from_dict({
-		'drug_loading': match['drug_loading'], 
-		'encap_efficiency': match['encap_efficiency'], 
+		'drug_loading': match['drug_loading'],
+		'encap_efficiency': match['encap_efficiency'],
 		'particle_diameter': match['particle_diameter']
 	})
 
@@ -127,9 +127,9 @@ value_space.add(value2)
 
 # print(param_space)
 
-num_repeats = 20
-budget = 20
-num_init_design=5
+num_repeats = 40
+budget = 768
+num_init_design = 10
 batch_size = 1
 
 
@@ -179,6 +179,11 @@ for repeat in range(num_repeats):
 			measurement = measure(sample_arr, df)
 			campaign.add_and_scalarize(sample.to_array(), measurement, scalarizer)
 
+		# check convergence
+		if sample_arr == ['48', 'Compritol_888', '120', '0', '0.005']:
+			print('found optimum!')
+			break
+
 
 	# store the results into a DataFrame
 	param_cols = {}
@@ -195,10 +200,3 @@ for repeat in range(num_repeats):
 	data_all_repeats.append(data)
 
 	pickle.dump(data_all_repeats, open(f'results.pkl', 'wb'))
-	
-		
-
-
-
-
-

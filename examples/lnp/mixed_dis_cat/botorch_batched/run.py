@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import time
 import os, sys
 import shutil
 import pickle
@@ -171,9 +172,9 @@ value_space.add(value2)
 # print(param_space)
 
 num_repeats = 40
-budget = 768
-num_init_design=10
-batch_size = 1
+budget = 640#768
+num_init_design=32
+batch_size = 32
 
 
 #------------------
@@ -233,13 +234,17 @@ for repeat in range(num_repeats):
 			campaign.add_and_scalarize(sample, measurement, scalarizer)
 
 			print('measurement :',  measurement)
-			#print('observations : ', campaign.observations.get_params())
 
 		# check convergence
-		if sample_arr == ['48.0', 'Compritol_888', '120.0', '0.0', '0.005']:
+		bools = [sample.to_list()==['48.0', 'Compritol_888', '120.0', '0.0', '0.005'] for sample in samples]
+		print('bools : ', bools)
+		if bools.count(True)>0:
 			print('found optimum!')
 			break
 
+		print('\n')
+		print('-'*100)
+		print('\n')
 
 	# store the results into a DataFrame
 	param_cols = {}

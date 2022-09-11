@@ -21,7 +21,7 @@ from botorch.acquisition import ExpectedImprovement, qExpectedImprovement, qNois
 import olympus
 from olympus.planners import CustomPlanner, AbstractPlanner
 from olympus import ParameterVector
-from olympus.scalarizers import Scalarizer																															 
+from olympus.scalarizers import Scalarizer
 from olympus.planners import Planner
 
 from gpytorch.mlls import ExactMarginalLogLikelihood
@@ -47,10 +47,10 @@ from atlas.optimizers.utils import (
 from atlas.optimizers.gps import ClassificationGP, CategoricalSingleTaskGP
 
 from atlas.optimizers.acqfs import (
-	FeasibilityAwareEI, 
+	FeasibilityAwareEI,
 	FeasibilityAwareQEI,
-	FeasibilityAwareGeneral, 
-	get_batch_initial_conditions, 
+	FeasibilityAwareGeneral,
+	get_batch_initial_conditions,
 	create_available_options,
 )
 
@@ -74,9 +74,9 @@ class BoTorchPlanner(BasePlanner):
 		max_jitter (float):
 		cla_threshold (float): classification threshold for the predictions of the
 			feasibilty surrogate
-		known_constraints (callable): callable which takes parameters and returns boolean 
+		known_constraints (callable): callable which takes parameters and returns boolean
 			corresponding to the feaibility of that experiment (True-->feasible, False-->infeasible)
-		general_parameters (list): list of parameter indices for which we average the objective 
+		general_parameters (list): list of parameter indices for which we average the objective
 			function over
 		is_moo (bool): whether or not we have a multiobjective optimization problem
 	'''
@@ -114,7 +114,7 @@ class BoTorchPlanner(BasePlanner):
 		# infer the model based on the parameter types
 		if self.problem_type == 'fully_continuous':
 			model = SingleTaskGP(train_x, train_y)
-		elif self.problem_type == 'mixed':
+		elif self.problem_type in ['mixed']:
 			# TODO: implement a method to retrieve the categorical dimensions
 			cat_dims = get_cat_dims(self.param_space)
 			model = MixedSingleTaskGP(train_x, train_y, cat_dims=cat_dims)
@@ -126,6 +126,14 @@ class BoTorchPlanner(BasePlanner):
 				# if we have no descriptors, use a Categorical kernel
 				# based on the HammingDistance
 				model = CategoricalSingleTaskGP(train_x, train_y)
+		elif self.problem_type == 'mixed_dis_cat':
+			if self.has_descriptors:
+				# we have some descriptors, use the Matern kernel
+				model = SingleTaskGP(train_x, train_y)
+			else:
+				cat_dims = get_cat_dims(self.param_space)
+				model = MixedSingleTaskGP(train_x, train_y, cat_dims=cat_dims)
+
 		else:
 			raise NotImplementedError
 
@@ -145,7 +153,7 @@ class BoTorchPlanner(BasePlanner):
 		'''
 		# if we have all nan values, just keep randomly sampling
 		if np.logical_or(
-			len(self._values) < self.num_init_design,  
+			len(self._values) < self.num_init_design,
 			np.all(np.isnan(self._values))
 		):
 			# set parameter space for the initial design planner
@@ -239,7 +247,9 @@ class BoTorchPlanner(BasePlanner):
 
 			# get the incumbent point
 			f_best_argmin = torch.argmin(self.train_y_scaled_reg)
+
 			f_best_scaled = self.train_y_scaled_reg[f_best_argmin][0].float()
+
 
 			# compute the ratio of infeasible to total points
 			infeas_ratio = (torch.sum(self.train_y_scaled_cla) / self.train_x_scaled_cla.size(0)).item()
@@ -252,9 +262,10 @@ class BoTorchPlanner(BasePlanner):
 					self.reg_model, self.cla_model, self.cla_likelihood,
 					self.param_space, f_best_scaled,
 					self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max,
-					) 
+					)
 			elif self.batch_size > 1:
-				self.acqf = FeasibilityAwareQEI(
+				#self.acqf = FeasibilityAwareQEI(
+				self.acqf = FeasibilityAwareEI(
 					self.reg_model, self.cla_model, self.cla_likelihood,
 					self.param_space, f_best_scaled,
 					self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max
@@ -262,6 +273,7 @@ class BoTorchPlanner(BasePlanner):
 
 
 			bounds = get_bounds(self.param_space, self._mins_x, self._maxs_x, self.has_descriptors)
+
 
 
 			print('PROBLEM TYPE : ', self.problem_type)
@@ -799,7 +811,7 @@ if __name__ == '__main__':
 			return x*0.5 #torch.rand(x.shape[0]) - 0.05
 
 		planner = BoTorchPlanner(
-			goal='minimize', 
+			goal='minimize',
 			known_constraints=known_constraints,
 		)
 

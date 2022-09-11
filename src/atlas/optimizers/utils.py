@@ -17,11 +17,20 @@ def infer_problem_type(param_space):
 		problem_type = 'fully_continuous'
 	elif param_types.count('categorical') == len(param_types):
 		problem_type = 'fully_categorical'
-	elif np.logical_and(
+	elif param_types.count('discrete')==len(param_types):
+		problem_type = 'fully_discrete'
+	elif all([
 		'continuous' in param_types,
-		'categorical' in param_types
-		):
+		'categorical' in param_types,
+		'discrete' not in param_types,
+		]):
 		problem_type = 'mixed'
+	elif all([
+		'continuous' not in param_types,
+		'categorical' in param_types,
+		'discrete' in param_types,
+		]):
+		problem_type = 'mixed_dis_cat'
 	return problem_type
 
 
@@ -65,7 +74,7 @@ def get_fixed_features_list(param_space):
 			ohe.append(cat_param_to_feat(obj, val))
 		current_avail_feat.append(np.concatenate(ohe))
 		current_avail_cat.append(elem)
-	
+
 	# make list
 	for feat in current_avail_feat:
 		fixed_features_list.append(
@@ -87,7 +96,7 @@ def cat_param_to_feat(param, val):
 	'''
 	# get the index of the selected value amongst the options
 
-	arg_val = param.options.index(val)	
+	arg_val = param.options.index(val)
 	if np.all([d==None for d in param.descriptors]):
 		# no provided descriptors, resort to one-hot encoding
 		feat = np.zeros(len(param.options))
@@ -278,7 +287,7 @@ def param_vector_to_dict(param_vector, param_names, param_options, param_types):
             selected_option = options[selected_option_idx]
             param_dict[param_name] = selected_option
     return param_dict
-    
+
 
 def flip_source_tasks(source_tasks):
     ''' flip the sign of the source tasks if the

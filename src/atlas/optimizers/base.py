@@ -20,7 +20,7 @@ from botorch.acquisition import ExpectedImprovement, qExpectedImprovement, qNois
 import olympus
 from olympus.planners import CustomPlanner, AbstractPlanner
 from olympus import ParameterVector
-from olympus.scalarizers import Scalarizer																															 
+from olympus.scalarizers import Scalarizer
 from olympus.planners import Planner
 
 from gpytorch.mlls import ExactMarginalLogLikelihood
@@ -46,10 +46,10 @@ from atlas.optimizers.utils import (
 from atlas.optimizers.gps import ClassificationGP, CategoricalSingleTaskGP
 
 from atlas.optimizers.acqfs import (
-	FeasibilityAwareEI, 
+	FeasibilityAwareEI,
 	FeasibilityAwareQEI,
-	FeasibilityAwareGeneral, 
-	get_batch_initial_conditions, 
+	FeasibilityAwareGeneral,
+	get_batch_initial_conditions,
 	create_available_options,
 )
 
@@ -126,7 +126,7 @@ class BasePlanner(CustomPlanner):
 			self.init_design_planner = olympus.planners.RandomSearch(goal=self.goal)
 		elif self.init_design_strategy == 'sobol':
 			self.init_design_planner = olympus.planners.Sobol(goal=self.goal, budget=self.num_init_design)
-		elif self.init_design_strategy == 'lhs': 
+		elif self.init_design_strategy == 'lhs':
 			self.init_design_planner = olympus.planners.LatinHypercube(goal=self.goal, budget=self.num_init_design)
 		else:
 			message = f'Initial design strategy {self.init_design_strategy} not implemented'
@@ -148,6 +148,15 @@ class BasePlanner(CustomPlanner):
 			descriptors = []
 			for p in self.param_space:
 				descriptors.extend(p.descriptors)
+			if all(d is None for d in descriptors):
+				self.has_descriptors = False
+			else:
+				self.has_descriptors = True
+		elif self.problem_type in ['mixed','mixed_dis_cat']:
+			descriptors = []
+			for p in self.param_space:
+				if p.type == 'categorical':
+					descriptors.extend(p.descriptors)
 			if all(d is None for d in descriptors):
 				self.has_descriptors = False
 			else:
@@ -207,7 +216,7 @@ class BasePlanner(CustomPlanner):
 			# generate the regression dataset
 			params_reg = self._params[feas_ix].reshape(-1, 1)
 			train_y_reg = self._values[feas_ix, :]  # (num_feas_observations, num_objectives)
-			# scalarize the data 
+			# scalarize the data
 			train_y_reg = self.scalarizer.scalarize(train_y_reg).reshape(-1, 1) # (num_feas_observations, 1)
 
 		else:
@@ -222,6 +231,8 @@ class BasePlanner(CustomPlanner):
 			train_y_reg = self._values[feas_ix].reshape(-1, 1)
 
 		train_x_cla, train_x_reg = [], []
+
+		# adapt the data to
 
 		# adapt the data from olympus form to torch tensors
 		for ix in range(self._values.shape[0]):
@@ -238,7 +249,6 @@ class BasePlanner(CustomPlanner):
 
 		train_x_cla, train_x_reg = np.array(train_x_cla), np.array(train_x_reg)
 
-
 		# scale the training data - normalize inputs and standardize outputs
 		# TODO: should we scale all the parameters together?
 		self._mins_x = np.amin(train_x_cla, axis=0)
@@ -247,8 +257,11 @@ class BasePlanner(CustomPlanner):
 		self._means_y, self._stds_y  = np.mean(train_y_reg, axis=0), np.std(train_y_reg, axis=0)
 		self._stds_y = np.where(self._stds_y==0.0, 1., self._stds_y)
 
-		if not self.problem_type=='fully_categorical' and not self.has_descriptors:
-			# we dont scale the parameters if we have a one-hot-encoded representation
+		if self.problem_type == 'fully_categorical' and not self.has_descriptors:
+			# we dont scale the parameters if we have a fully one-hot-encoded representation
+			pass
+		else:
+			# scale the parameters
 			train_x_cla = forward_normalize(train_x_cla, self._mins_x, self._maxs_x)
 			train_x_reg = forward_normalize(train_x_reg, self._mins_x, self._maxs_x)
 
@@ -268,12 +281,13 @@ class BasePlanner(CustomPlanner):
 			observations (obj): Olympus campaign observations object
 		'''
 		# elif type(observations) == olympus.campaigns.observations.Observations:
-		self._params = observations.get_params() # string encodings of categorical params
+		self._params = observations.get_params(as_array=True) # string encodings of categorical params
 		self._values = observations.get_values(as_array=True, opposite=self.flip_measurements)
 
 		# make values 2d if they are not already
 		if len(np.array(self._values).shape)==1:
 			self._values = np.array(self._values).reshape(-1, 1)
+
 
 
 	def fca_constraint(self, X):
