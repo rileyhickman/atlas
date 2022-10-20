@@ -263,13 +263,12 @@ class GradientOptimizer():
 		if self.problem_type in ['fully_categorical', 'mixed', 'mixed_dis_cat'] and not self.has_descriptors:
 			# project the sample back to Olympus format
 			samples = []
-			results_np = results_torch.detach().numpy()
-			if len(results_np.shape) == 1:
-				results_np = results_np.reshape(1, -1)
-			results_np = reverse_normalize(results_np, self._mins_x, self._maxs_x)
-			for sample_ix in range(results_np.shape[0]):
+			# if len(results_np.shape) == 1:
+			# 	results_np = results_np.reshape(1, -1)
+			#results_torch = reverse_normalize(results_torch, self._mins_x, self._maxs_x)
+			for sample_ix in range(len(results_torch)):
 				sample = project_to_olymp(
-					results_np[sample_ix], self.param_space,
+					results_torch[sample_ix], self.param_space,
 					has_descriptors=self.has_descriptors,
 					choices_feat=self.choices_feat, choices_cat=self.choices_cat,
 				)
