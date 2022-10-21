@@ -275,6 +275,75 @@ class BasePlanner(CustomPlanner):
 		)
 
 
+	def reg_surrogate(self, X, return_np=False):
+
+		if not hasattr(self, 'reg_model'):
+			msg = 'Optimizer does not yet have regression surrogate model'
+			Logger.log(msg, 'FATAL')
+
+		# if we've been passed numpy array, convert to torch tensor
+		if isinstance(X, np.ndarray):
+			X = torch.tensor(X).double()
+		elif isinstance(X, torch.tensor):
+			pass
+		else:
+			Logger.log(f'Invalid input type passed for X: {type(X)}', 'FATAL')
+
+		if self.problem_type == 'fully_categorical' and not self.has_descriptors:
+			# we dont scale the parameters if we have a fully one-hot-encoded representation
+			pass
+		else:
+			# scale the parameters
+			X = forward_normalize(X, self._mins_x, self._maxs_x)
+
+		posterior = self.reg_model.posterior(X=X)
+		pred_mu, pred_sigma = posterior.mean.detach(), torch.sqrt(posterior.variance.detach())
+
+		# reverse scale the predictions
+		pred_mu = reverse_standardize(pred_mu, self._means_y, self._stds_y)
+
+		if return_np:
+			pred_mu, pred_sigma = pred_mu.numpy(), pred_sigma.numpy()
+
+		return pred_mu, pred_sigma
+
+
+	def cla_surrogate(self, X, return_np=False, normalize=True):
+
+		if not hasattr(self, 'cla_model'):
+			msg = 'Optimizer does not yet have classification surrogate model'
+			Logger.log(msg, 'FATAL')
+
+		# if we've been passed numpy array, convert to torch tensor
+		if isinstance(X, np.ndarray):
+			X = torch.tensor(X).double()
+		elif isinstance(X, torch.tensor):
+			pass
+		else:
+			Logger.log(f'Invalid input type passed for X: {type(X)}', 'FATAL')
+
+		if self.problem_type == 'fully_categorical' and not self.has_descriptors:
+			# we dont scale the parameters if we have a fully one-hot-encoded representation
+			pass
+		else:
+			# scale the parameters
+			X = forward_normalize(X, self._mins_x, self._maxs_x)
+
+		likelihood = self.cla_likelihood(self.cla_model(X.float()))
+		mean = likelihood.mean.detach()
+		mean = mean.view(mean.shape[0],1)
+		if normalize:
+			_max =  torch.amax(mean, axis=0)
+			_min =  torch.amin(mean, axis=0)
+			mean = ( mean - _min ) / (_max - _min)
+
+		if return_np:
+			mean = mean.numpy()
+
+		return mean
+
+
+
 	def _tell(self, observations):
 		''' unpack the current observations from Olympus
 		Args:
@@ -287,6 +356,7 @@ class BasePlanner(CustomPlanner):
 		# make values 2d if they are not already
 		if len(np.array(self._values).shape)==1:
 			self._values = np.array(self._values).reshape(-1, 1)
+
 
 
 
