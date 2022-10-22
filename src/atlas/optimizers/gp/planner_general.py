@@ -50,7 +50,7 @@ from atlas.optimizers.gp.utils import (
 	get_fixed_features_list,
 )
 
-from atlas.optimizers.gp.gps import ClassificationGP, CategoricalSingleTaskGP
+from atlas.optimizers.gps import ClassificationGPMatern, ClassificationGPHamming, CategoricalSingleTaskGP
 
 
 from atlas.optimizers.gp.acqfs import FeasibilityAwareEI, FeasibilityAwareGeneral, get_batch_initial_conditions, create_available_options
@@ -75,9 +75,9 @@ class BoTorchPlanner(CustomPlanner):
 		max_jitter (float):
 		cla_threshold (float): classification threshold for the predictions of the
 			feasibilty surrogate
-		known_constraints (callable): callable which takes parameters and returns boolean 
+		known_constraints (callable): callable which takes parameters and returns boolean
 			corresponding to the feaibility of that experiment (True-->feasible, False-->infeasible)
-		general_parameters (list): list of parameter indices for which we average the objective 
+		general_parameters (list): list of parameter indices for which we average the objective
 			function over
 		is_moo (bool): whether or not we have a multiobjective optimization problem
 	'''
@@ -428,7 +428,7 @@ class BoTorchPlanner(CustomPlanner):
 				self.reg_model, self.cla_model, self.cla_likelihood, self.general_parmeters,
 				self.param_space, f_best_scaled,
 				self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max,
-				) 
+				)
 
 			bounds = get_bounds(self.param_space, self.has_descriptors)
 
@@ -452,7 +452,7 @@ class BoTorchPlanner(CustomPlanner):
 						# if we cant find sufficient inital design points, resort to using the
 						# acqusition function only (without the feasibility constraint)
 						nonlinear_inequality_constraints = nonlinear_inequality_constraints.pop()
-						
+
 						# try again with only the a priori known constraints
 						batch_initial_conditions = get_batch_initial_conditions(
 							num_restarts=200, batch_size=self.batch_size, param_space=self.param_space,
@@ -470,7 +470,7 @@ class BoTorchPlanner(CustomPlanner):
 						# we've found initial conditions
 						pass
 				else:
-					# we dont have fca constraints, if we have known constraints, 
+					# we dont have fca constraints, if we have known constraints,
 					if callable(self.known_constraints):
 
 						batch_initial_conditions = get_batch_initial_conditions(
@@ -478,14 +478,14 @@ class BoTorchPlanner(CustomPlanner):
 						constraint_callable=nonlinear_inequality_constraints,
 						)
 						if type(batch_initial_conditions) == type(None):
-							# return an error to the user 
+							# return an error to the user
 							print('[FATAL] Could not find inital conditions for constrianed optimization...')
 							quit()
-				
+
 				if not self.known_constraints and not self.feas_strategy =='fca':
 					# we dont have any constraints
 					nonlinear_inequality_constraints = None
-					batch_initial_conditions = None 
+					batch_initial_conditions = None
 
 
 				results, _ = optimize_acqf(
@@ -520,12 +520,12 @@ class BoTorchPlanner(CustomPlanner):
 				options_ = self.param_space[0].options
 
 				# functional parameters
-				# TODO: this is hardcoded to 
+				# TODO: this is hardcoded to
 				X_x = results[:, len(options_):][0]
 
 				for option in options_:
 					feat = cat_param_to_feat(self.param_space[0], option)
-					results[:, :len(options_)] = torch.tensor(feat) 
+					results[:, :len(options_)] = torch.tensor(feat)
 					X_sns.append(deepcopy(results))
 
 				X_sns = torch.stack(X_sns)
@@ -543,8 +543,8 @@ class BoTorchPlanner(CustomPlanner):
 				# final parameter results to be returned
 				results = torch.cat([cat_feat, X_x])
 				results = results.view(1, results.shape[0])
-			
-				
+
+
 			elif self.problem_type == 'fully_categorical':
 				# need to implement the choices input, which is a
 				# (num_choices * d) torch.Tensor of the possible choices
@@ -607,7 +607,7 @@ class BoTorchPlanner(CustomPlanner):
 					has_descriptors=self.has_descriptors,
 					choices_feat=choices_feat, choices_cat=choices_cat,
 				)
-	
+
 			return_params = ParameterVector().from_dict(sample, self.param_space)
 
 		return return_params
@@ -1148,7 +1148,7 @@ if __name__ == '__main__':
 			return x*0.5 #torch.rand(x.shape[0]) - 0.05
 
 		planner = BoTorchPlanner(
-			goal='minimize', 
+			goal='minimize',
 			known_constraints=known_constraints,
 		)
 

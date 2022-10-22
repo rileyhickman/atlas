@@ -19,7 +19,7 @@ from gpytorch.distributions import MultivariateNormal
 import olympus
 from olympus.planners import CustomPlanner, AbstractPlanner
 from olympus import ParameterVector
-from olympus.scalarizers import Scalarizer																															 
+from olympus.scalarizers import Scalarizer
 from olympus.planners import Planner
 
 
@@ -38,20 +38,20 @@ from atlas.optimizers.utils import (
 	get_bounds,
 	get_cat_dims,
 	get_fixed_features_list,
-	Scaler, 
+	Scaler,
 	flip_source_tasks
 )
 
 from atlas import Logger
 from atlas.optimizers.acquisition_optimizers.base_optimizer import AcquisitionOptimizer
 
-from atlas.optimizers.gps import ClassificationGP, CategoricalSingleTaskGP
+from atlas.optimizers.gps import ClassificationGPMatern, CategoricalSingleTaskGP
 
 from atlas.optimizers.acqfs import (
-	FeasibilityAwareEI, 
+	FeasibilityAwareEI,
 	FeasibilityAwareQEI,
-	FeasibilityAwareGeneral, 
-	get_batch_initial_conditions, 
+	FeasibilityAwareGeneral,
+	get_batch_initial_conditions,
 	create_available_options,
 )
 
@@ -94,19 +94,19 @@ class DKTPlanner(BasePlanner):
 		self,
 		goal='minimize',
 		feas_strategy='naive-0',
-		feas_param=0.2, 
+		feas_param=0.2,
 		batch_size=1,
 		random_seed=None,
-		num_init_design=5, 
+		num_init_design=5,
 		init_design_strategy='random',
-		vgp_iters=1000, 
-		vgp_lr=0.1, 
+		vgp_iters=1000,
+		vgp_lr=0.1,
 		max_jitter=1e-1,
-		cla_threshold=0.5, 
-		known_constraints=None, 
+		cla_threshold=0.5,
+		known_constraints=None,
 		general_parmeters=None,
-		# meta-learning stuff 
-		warm_start=False, 
+		# meta-learning stuff
+		warm_start=False,
 		model_path='./.tmp_models',
 		from_disk=False,
 		train_tasks=[],
@@ -212,7 +212,7 @@ class DKTPlanner(BasePlanner):
 
 		# if we have all nan values, just keep randomly sampling
 		if np.logical_or(
-			len(self._values) < self.num_init_design,  
+			len(self._values) < self.num_init_design,
 			np.all(np.isnan(self._values))
 		):
 
@@ -324,7 +324,7 @@ class DKTPlanner(BasePlanner):
 					self.reg_model, self.cla_model, self.cla_likelihood,
 					self.param_space, f_best_scaled,
 					self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max,
-					) 
+					)
 			elif self.batch_size > 1:
 				self.acqf = FeasibilityAwareQEI(
 					self.reg_model, self.cla_model, self.cla_likelihood,
@@ -497,7 +497,7 @@ if __name__ == '__main__':
 			print(f'ITER : {iter}\tSAMPLES : {samples}')
 
 
-			
+
 			sample_arr = samples.to_array()
 			measurement = surface(
 				sample_arr.reshape((1, sample_arr.shape[0]))

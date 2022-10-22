@@ -43,7 +43,7 @@ from atlas.optimizers.utils import (
 	get_fixed_features_list,
 )
 
-from atlas.optimizers.gps import ClassificationGP, CategoricalSingleTaskGP
+from atlas.optimizers.gps import ClassificationGPMatern, CategoricalSingleTaskGP
 
 from atlas.optimizers.acqfs import (
 	FeasibilityAwareEI,
@@ -67,7 +67,7 @@ class BasePlanner(CustomPlanner):
 		num_init_design=5,
 		init_design_strategy='random',
 		acquisition_optimizer_kind='gradient', # gradient, genetic
-		vgp_iters=1000,
+		vgp_iters=2000,
 		vgp_lr=0.1,
 		max_jitter=1e-1,
 		cla_threshold=0.5,
@@ -170,7 +170,7 @@ class BasePlanner(CustomPlanner):
 		''' build the GP classification model and likelihood
 		and train the model
 		'''
-		model = ClassificationGP(train_x)
+		model = ClassificationGPMatern(train_x, train_y)
 		likelihood = gpytorch.likelihoods.BernoulliLikelihood()
 
 		model, likelihood = self.train_vgp(model, likelihood,  train_x, train_y)
@@ -276,31 +276,45 @@ class BasePlanner(CustomPlanner):
 
 
 	def reg_surrogate(self, X, return_np=False):
+		''' make prediction using regression surrogate model
+
+		Args:
+			X (np.ndarray or list): 2d numpy array or nested list with input parameters
+		'''
 
 		if not hasattr(self, 'reg_model'):
 			msg = 'Optimizer does not yet have regression surrogate model'
 			Logger.log(msg, 'FATAL')
 
-		# if we've been passed numpy array, convert to torch tensor
-		if isinstance(X, np.ndarray):
-			X = torch.tensor(X).double()
-		elif isinstance(X, torch.tensor):
-			pass
-		else:
-			Logger.log(f'Invalid input type passed for X: {type(X)}', 'FATAL')
+		X_proc = []
+		# adapt the data from olympus form to torch tensors
+		for ix in range(len(X)):
+			sample_x = []
+			for param_ix, (space_true, element) in enumerate(zip(self.param_space, X[ix])):
+				if self.param_space[param_ix].type == 'categorical':
+					feat = cat_param_to_feat(space_true, element)
+					sample_x.extend(feat)
+				else:
+					sample_x.append(float(element))
+			X_proc.append(sample_x)
+
+		X_proc = torch.tensor(np.array(X_proc)).double()
 
 		if self.problem_type == 'fully_categorical' and not self.has_descriptors:
 			# we dont scale the parameters if we have a fully one-hot-encoded representation
 			pass
 		else:
 			# scale the parameters
-			X = forward_normalize(X, self._mins_x, self._maxs_x)
+			X_proc = forward_normalize(X_proc, self._mins_x, self._maxs_x)
 
-		posterior = self.reg_model.posterior(X=X)
+		posterior = self.reg_model.posterior(X=X_proc)
 		pred_mu, pred_sigma = posterior.mean.detach(), torch.sqrt(posterior.variance.detach())
 
 		# reverse scale the predictions
 		pred_mu = reverse_standardize(pred_mu, self._means_y, self._stds_y)
+
+		if self.goal == 'maximize':
+			pred_mu = -pred_mu
 
 		if return_np:
 			pred_mu, pred_sigma = pred_mu.numpy(), pred_sigma.numpy()
@@ -314,24 +328,30 @@ class BasePlanner(CustomPlanner):
 			msg = 'Optimizer does not yet have classification surrogate model'
 			Logger.log(msg, 'FATAL')
 
-		# if we've been passed numpy array, convert to torch tensor
-		if isinstance(X, np.ndarray):
-			X = torch.tensor(X).double()
-		elif isinstance(X, torch.tensor):
-			pass
-		else:
-			Logger.log(f'Invalid input type passed for X: {type(X)}', 'FATAL')
+		X_proc = []
+		# adapt the data from olympus form to torch tensors
+		for ix in range(len(X)):
+			sample_x = []
+			for param_ix, (space_true, element) in enumerate(zip(self.param_space, X[ix])):
+				if self.param_space[param_ix].type == 'categorical':
+					feat = cat_param_to_feat(space_true, element)
+					sample_x.extend(feat)
+				else:
+					sample_x.append(float(element))
+			X_proc.append(sample_x)
+
+		X_proc = torch.tensor(np.array(X_proc)).double()
 
 		if self.problem_type == 'fully_categorical' and not self.has_descriptors:
 			# we dont scale the parameters if we have a fully one-hot-encoded representation
 			pass
 		else:
 			# scale the parameters
-			X = forward_normalize(X, self._mins_x, self._maxs_x)
+			X_proc = forward_normalize(X_proc, self._mins_x, self._maxs_x)
 
-		likelihood = self.cla_likelihood(self.cla_model(X.float()))
+		likelihood = self.cla_likelihood(self.cla_model(X_proc.float()))
 		mean = likelihood.mean.detach()
-		mean = mean.view(mean.shape[0],1)
+		mean = 1.-mean.view(mean.shape[0],1) # switch from p_feas to p_infeas
 		if normalize:
 			_max =  torch.amax(mean, axis=0)
 			_min =  torch.amin(mean, axis=0)
@@ -342,6 +362,46 @@ class BasePlanner(CustomPlanner):
 
 		return mean
 
+
+	def acquisition_function(self, X, return_np, normalize=True):
+
+		X_proc = []
+		# adapt the data from olympus form to torch tensors
+		for ix in range(len(X)):
+			sample_x = []
+			for param_ix, (space_true, element) in enumerate(zip(self.param_space, X[ix])):
+				if self.param_space[param_ix].type == 'categorical':
+					feat = cat_param_to_feat(space_true, element)
+					sample_x.extend(feat)
+				else:
+					sample_x.append(float(element))
+			X_proc.append(sample_x)
+
+		X_proc = torch.tensor(np.array(X_proc)).double()
+
+		if self.problem_type == 'fully_categorical' and not self.has_descriptors:
+			# we dont scale the parameters if we have a fully one-hot-encoded representation
+			pass
+		else:
+			# scale the parameters
+			X_proc = forward_normalize(X_proc, self._mins_x, self._maxs_x)
+
+
+		acqf_vals = self.acqf(
+			X_proc.view(X_proc.shape[0], 1, X_proc.shape[-1])
+		).detach()
+
+		acqf_vals = acqf_vals.view(acqf_vals.shape[0], 1)
+
+		if normalize:
+			_max =  torch.amax(acqf_vals, axis=0)
+			_min =  torch.amin(acqf_vals, axis=0)
+			acqf_vals = ( acqf_vals - _min ) / (_max - _min)
+
+		if return_np:
+			acqf_vals = acqf_vals.numpy()
+
+		return acqf_vals
 
 
 	def _tell(self, observations):

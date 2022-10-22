@@ -19,7 +19,7 @@ from gpytorch.kernels import ScaleKernel, RBFKernel, MaternKernel
 
 
 
-class ClassificationGP(ApproximateGP):
+class ClassificationGPMatern(ApproximateGP):
 	''' Variational GP for binary classification. Produces a latent distribution,
 	which is multivariate Gaussian, which is intended to be transfromed to a Bernoulli
 	likelihood to give the binary class probabilities,
@@ -28,14 +28,15 @@ class ClassificationGP(ApproximateGP):
 		train_x (torch.tensor): 2D tensor with training inputs
 	'''
 
-	def __init__(self, train_x):
+	def __init__(self, train_x, train_y):
+		self.train_y = train_y
 		variational_distribution = CholeskyVariationalDistribution(train_x.size(0))
 		# using this variational strategy because we use directly the training points
 		# as inducing points for the GP
 		variational_strategy = UnwhitenedVariationalStrategy(
 			self, train_x, variational_distribution, learn_inducing_locations=False
 		)
-		super(ClassificationGP, self).__init__(variational_strategy)
+		super(ClassificationGPMatern, self).__init__(variational_strategy)
 		self.mean_module = gpytorch.means.ConstantMean()
 		self.covar_module = ScaleKernel(MaternKernel()) #RBFKernel())
 
@@ -44,6 +45,7 @@ class ClassificationGP(ApproximateGP):
 		covar_x = self.covar_module(x)
 		latent_output = MultivariateNormal(mean_x, covar_x)
 		return latent_output
+
 
 
 class CategoricalSingleTaskGP(ExactGP, GPyTorchModel):
