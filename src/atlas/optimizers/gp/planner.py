@@ -44,7 +44,7 @@ from atlas.optimizers.utils import (
 	get_fixed_features_list,
 )
 
-from atlas.optimizers.gps import ClassificationGP, CategoricalSingleTaskGP
+from atlas.optimizers.gps import ClassificationGPMatern, CategoricalSingleTaskGP
 
 from atlas.optimizers.acqfs import (
 	FeasibilityAwareEI,

@@ -25,7 +25,7 @@ from gpytorch.lazy import PsdSumLazyTensor
 import olympus
 from olympus.planners import CustomPlanner, AbstractPlanner
 from olympus import ParameterVector
-from olympus.scalarizers import Scalarizer																															 
+from olympus.scalarizers import Scalarizer
 from olympus.planners import Planner
 
 from gpytorch.mlls import ExactMarginalLogLikelihood
@@ -43,20 +43,20 @@ from atlas.optimizers.utils import (
 	get_bounds,
 	get_cat_dims,
 	get_fixed_features_list,
-	Scaler, 
+	Scaler,
 	flip_source_tasks
 )
 
 from atlas import Logger
 from atlas.optimizers.acquisition_optimizers.base_optimizer import AcquisitionOptimizer
 
-from atlas.optimizers.gps import ClassificationGP, CategoricalSingleTaskGP
+from atlas.optimizers.gps import ClassificationGPMatern, CategoricalSingleTaskGP
 
 from atlas.optimizers.acqfs import (
-	FeasibilityAwareEI, 
+	FeasibilityAwareEI,
 	FeasibilityAwareQEI,
-	FeasibilityAwareGeneral, 
-	get_batch_initial_conditions, 
+	FeasibilityAwareGeneral,
+	get_batch_initial_conditions,
 	create_available_options,
 )
 
@@ -136,18 +136,18 @@ class RGPEPlanner(BasePlanner):
 		self,
 		goal='minimize',
 		feas_strategy='naive-0',
-		feas_param=0.2, 
+		feas_param=0.2,
 		batch_size=1,
 		random_seed=None,
-		num_init_design=5, 
+		num_init_design=5,
 		init_design_strategy='random',
-		vgp_iters=1000, 
-		vgp_lr=0.1, 
+		vgp_iters=1000,
+		vgp_lr=0.1,
 		max_jitter=1e-1,
-		cla_threshold=0.5, 
-		known_constraints=None, 
+		cla_threshold=0.5,
+		known_constraints=None,
 		general_parmeters=None,
-		# meta-learning stuff 
+		# meta-learning stuff
 		cache_weights=False,
 		weights_path='./weights/',
 		train_tasks=[],
@@ -350,7 +350,7 @@ class RGPEPlanner(BasePlanner):
 
 		# if we have all nan values, just keep randomly sampling
 		if np.logical_or(
-			len(self._values) < self.num_init_design,  
+			len(self._values) < self.num_init_design,
 			np.all(np.isnan(self._values))
 		):
 
@@ -435,7 +435,7 @@ class RGPEPlanner(BasePlanner):
 			target_model = self._get_fitted_model(self.train_x_scaled_reg, self.train_y_scaled_reg)
 			model_list = self.source_models + [target_model]
 			rank_weights, ranking_loss_tensor = self.compute_rank_weights(
-				self.train_x_scaled_reg.float(), 
+				self.train_x_scaled_reg.float(),
 				self.train_y_scaled_reg.float(),
 				self.source_models,
 				target_model,
@@ -479,7 +479,7 @@ class RGPEPlanner(BasePlanner):
 					self.reg_model, self.cla_model, self.cla_likelihood,
 					self.param_space, f_best_scaled,
 					self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max,
-					) 
+					)
 			elif self.batch_size > 1:
 				self.acqf = FeasibilityAwareQEI(
 					self.reg_model, self.cla_model, self.cla_likelihood,
@@ -541,4 +541,3 @@ class RGPEPlanner(BasePlanner):
 			min_ = 0.0
 
 		return min_, max_
-
