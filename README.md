@@ -2,7 +2,7 @@
 Bayesian optimization for chemistry
 
 
-![alt text](https://github.com/rileyhickman/matter-guccy/blob/main/static/atlas_logo.png)
+![alt text](https://github.com/rileyhickman/atlas/blob/main/static/atlas_logo.png)
 
 ## Installation
 
