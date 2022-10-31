@@ -2,6 +2,8 @@
 Bayesian optimization for chemistry
 
 
+![alt text](https://github.com/rileyhickman/matter-guccy/blob/main/static/atlas_logo.png)
+
 ## Installation
 
 To install atlas, you can run the following commands
