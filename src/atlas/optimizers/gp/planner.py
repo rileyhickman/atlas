@@ -311,8 +311,14 @@ class BoTorchPlanner(BasePlanner):
 		elif self.batch_size > 1:
 			acqf = qExpectedImprovement(reg_model, f_best_scaled, objective=None, maximize=False)
 		samples, _ = propose_randomly(num_samples, self.param_space)
-		if not self.problem_type=='fully_categorical' and not self.has_descriptors:
-			# we dont scale the parameters if we have a one-hot-encoded representation
+		# if not self.problem_type=='fully_categorical' and not self.has_descriptors:
+		# 	# we dont scale the parameters if we have a one-hot-encoded representation
+		# 	samples = forward_normalize(samples, self._mins_x, self._maxs_x)
+		if self.problem_type == 'fully_categorical' and not self.has_descriptors:
+			# we dont scale the parameters if we have a fully one-hot-encoded representation
+			pass
+		else:
+			# scale the parameters
 			samples = forward_normalize(samples, self._mins_x, self._maxs_x)
 
 		acqf_vals = acqf(

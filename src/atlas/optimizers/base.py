@@ -230,9 +230,9 @@ class BasePlanner(CustomPlanner):
 			params_reg = self._params[feas_ix].reshape(-1, 1)
 			train_y_reg = self._values[feas_ix].reshape(-1, 1)
 
-		train_x_cla, train_x_reg = [], []
 
-		# adapt the data to
+
+		train_x_cla, train_x_reg = [], []
 
 		# adapt the data from olympus form to torch tensors
 		for ix in range(self._values.shape[0]):
@@ -248,6 +248,8 @@ class BasePlanner(CustomPlanner):
 				train_x_reg.append(sample_x)
 
 		train_x_cla, train_x_reg = np.array(train_x_cla), np.array(train_x_reg)
+
+		
 
 		# scale the training data - normalize inputs and standardize outputs
 		# TODO: should we scale all the parameters together?
@@ -351,7 +353,8 @@ class BasePlanner(CustomPlanner):
 
 		likelihood = self.cla_likelihood(self.cla_model(X_proc.float()))
 		mean = likelihood.mean.detach()
-		mean = 1.-mean.view(mean.shape[0],1) # switch from p_feas to p_infeas
+		mean = mean.view(mean.shape[0],1)
+		#mean = 1.-mean.view(mean.shape[0],1) # switch from p_feas to p_infeas
 		if normalize:
 			_max =  torch.amax(mean, axis=0)
 			_min =  torch.amin(mean, axis=0)
@@ -443,6 +446,7 @@ class BasePlanner(CustomPlanner):
 		# this expression is >= 0 for a feasible point, < 0 for an infeasible point
 		# p_feas should be 1 - P(infeasible|X) which is returned by the classifier
 		with gpytorch.settings.cholesky_jitter(1e-1):
-			constraint_val = (1 - self.cla_likelihood(self.cla_model(X.float())).mean.unsqueeze(-1).double()) - self.feas_param
+			constraint_val = (1. - self.cla_likelihood(self.cla_model(X.float())).mean.unsqueeze(-1).double()) - self.feas_param
+
 
 		return constraint_val

@@ -87,16 +87,19 @@ class GradientOptimizer():
 			batch_initial_conditions = get_batch_initial_conditions(
 				num_restarts=200, batch_size=self.batch_size, param_space=self.param_space,
 				constraint_callable=nonlinear_inequality_constraints,
+				mins_x=self._mins_x, maxs_x=self._maxs_x,
 			)
 			if type(batch_initial_conditions) == type(None):
 				# if we cant find sufficient inital design points, resort to using the
 				# acqusition function only (without the feasibility constraint)
+				msg = 'Insufficient starting points for constrianed acqf optimization, resorting to optimization of regression acqf only'
+				Logger.log(msg, 'WARNING')
 				nonlinear_inequality_constraints = nonlinear_inequality_constraints.pop()
-
 				# try again with only the a priori known constraints
 				batch_initial_conditions = get_batch_initial_conditions(
 					num_restarts=200, batch_size=self.batch_size, param_space=self.param_space,
 					constraint_callable=nonlinear_inequality_constraints,
+					mins_x=self._mins_x, maxs_x=self._maxs_x,
 				)
 
 				if type(batch_initial_conditions) == type(None):
@@ -104,23 +107,28 @@ class GradientOptimizer():
 					message = 'Could not find inital conditions for constrianed optimization...'
 					Logger.log(message, 'FATAL')
 				elif type(batch_initial_conditions) == torch.Tensor:
-					# weve found sufficient conditions
+					# weve found sufficient conditions on the second try, nothing to do
 					pass
 			elif type(batch_initial_conditions) == torch.Tensor:
-				# we've found initial conditions
+				# we've found initial conditions on the first try, nothing to do
 				pass
 		else:
 			# we dont have fca constraints, if we have known constraints,
 			if callable(self.known_constraints):
 
 				batch_initial_conditions = get_batch_initial_conditions(
-				num_restarts=200, batch_size=self.batch_size, param_space=self.param_space,
-				constraint_callable=nonlinear_inequality_constraints,
+					num_restarts=200, batch_size=self.batch_size, param_space=self.param_space,
+					constraint_callable=nonlinear_inequality_constraints,
+					mins_x=self._mins_x, maxs_x=self._maxs_x,
+
 				)
 				if type(batch_initial_conditions) == type(None):
 					# return an error to the user
 					message = 'Could not find inital conditions for constrianed optimization...'
 					Logger.log(message, 'FATAL')
+
+		# print('batch_initial_conditions : ', batch_initial_conditions)
+		print('batch_initial_conditions shape : ', batch_initial_conditions.shape)
 
 		if not self.known_constraints and not self.feas_strategy =='fca':
 			# we dont have any constraints
@@ -169,14 +177,16 @@ class GradientOptimizer():
 			constraint_callable = None
 
 		self.choices_feat, self.choices_cat = create_available_options(
-			self.param_space, self._params, constraint_callable
+			self.param_space, self._params, constraint_callable, normalize=self.has_descriptors,
+			mins_x=self._mins_x, maxs_x=self._maxs_x,
 		)
 
-		if self.has_descriptors:
-			self.choices_feat = forward_normalize(
-				self.choices_feat.detach().numpy(), self._mins_x, self._maxs_x,
-			)
-			self.choices_feat = torch.tensor(self.choices_feat)
+		# NOTE: THIS WILL HAVE ALREADY BEEN DONE IN create_available_options
+		# if self.has_descriptors:
+		# 	self.choices_feat = forward_normalize(
+		# 		self.choices_feat.detach().numpy(), self._mins_x, self._maxs_x,
+		# 	)
+		# 	self.choices_feat = torch.tensor(self.choices_feat)
 
 		results, best_idx = self._optimize_acqf_discrete(
 			acq_function=self.acqf,

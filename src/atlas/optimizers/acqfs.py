@@ -116,7 +116,7 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
 		elif self.feas_strategy == 'fca':
 			return acqf
 		elif self.feas_strategy == 'fia':
-			return ((1 - self.infeas_ratio)**self.feas_param * acqf) + ((self.infeas_ratio**self.feas_param)*p_feas)
+			return ((1 - self.infeas_ratio)**self.feas_param * acqf) + ((self.infeas_ratio**self.feas_param)*(1-p_feas))
 		elif 'naive-' in self.feas_strategy:
 			if self.use_p_feas_only:
 				return p_feas
@@ -198,7 +198,7 @@ class FeasibilityAwareQEI(qExpectedImprovement):
 		elif self.feas_strategy == 'fca':
 			return acqf
 		elif self.feas_strategy == 'fia':
-			return ((1 - self.infeas_ratio)**self.feas_param * acqf) + ((self.infeas_ratio**self.feas_param)*p_feas)
+			return ((1 - self.infeas_ratio)**self.feas_param * acqf) + ((self.infeas_ratio**self.feas_param)*(1-p_feas))
 		elif 'naive-' in self.feas_strategy:
 			if self.use_p_feas_only:
 				return p_feas
@@ -206,7 +206,6 @@ class FeasibilityAwareQEI(qExpectedImprovement):
 				return acqf
 		else:
 			raise NotImplementedError
-
 
 
 
@@ -256,7 +255,7 @@ class FeasibilityAwareEI(ExpectedImprovement):
 		acqf = super().forward(X) # get the EI acquisition
 		# approximately normalize the EI acquisition function
 		acqf = (acqf - self.acqf_min_max[0]) / (self.acqf_min_max[1]-self.acqf_min_max[0])
-		# p_feas should be 1 - P(feasible|X) because EI is
+		# p_feas should be 1 - P(infeasible|X) because EI is
 		# maximized by default
 		if not 'naive-' in self.feas_strategy:
 			p_feas = 1. - self.compute_feas_post(X)
@@ -267,7 +266,7 @@ class FeasibilityAwareEI(ExpectedImprovement):
 
 
 	def compute_feas_post(self, X):
-		''' computes the posterior P(feasible|X)
+		''' computes the posterior P(infeasible|X)
 		Args:
 			X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
 		'''
@@ -283,7 +282,10 @@ class FeasibilityAwareEI(ExpectedImprovement):
 		elif self.feas_strategy == 'fca':
 			return acqf
 		elif self.feas_strategy == 'fia':
-			return ((1 - self.infeas_ratio)**self.feas_param * acqf) + ((self.infeas_ratio**self.feas_param)*p_feas)
+			# print('infeas_ratio : ', self.infeas_ratio)
+			# print('feas_param : ', self.feas_param)
+			# print('exponent : ', self.infeas_ratio**self.feas_param)
+			return ((1. - self.infeas_ratio**self.feas_param) * acqf) + ((self.infeas_ratio**self.feas_param)*(p_feas))
 		elif 'naive-' in self.feas_strategy:
 			if self.use_p_feas_only:
 				return p_feas
@@ -299,7 +301,10 @@ def get_batch_initial_conditions(
 	batch_size,
 	param_space,
 	constraint_callable,
+	mins_x, 
+	maxs_x,
 	num_chances=15,
+
 ):
 	''' generate batches of initial conditions for a
 	random restart optimization subject to some constraints. This uses
@@ -310,6 +315,8 @@ def get_batch_initial_conditions(
 		batch_size (int): number of samples to recommend per ask/tell call (fixed to 1)
 		param_space (obj): Olympus parameter space object for the given problem
 		constraint_callable (list): list of callables which specifies the constraint function
+		mins_x (np.array): minimum values of each parameter space dimension 
+		maxs_x (np.array): maximum values of each parameter 
 		num_chances (int):
 	Returns:
 		a torch.tensor with shape (num_restarts, batch_size, num_dims)
@@ -320,8 +327,10 @@ def get_batch_initial_conditions(
 	num_raw_samples = 15*num_restarts
 	raw_samples, _ = propose_randomly(num_raw_samples, param_space)
 
-	raw_samples = torch.tensor(raw_samples).view(raw_samples.shape[0], batch_size, raw_samples.shape[1])
+	# forward normalize the randomly generated samples
+	raw_samples = forward_normalize(raw_samples, mins_x, maxs_x)
 
+	raw_samples = torch.tensor(raw_samples).view(raw_samples.shape[0], batch_size, raw_samples.shape[1])
 
 	constraint_vals = []
 	for constraint in constraint_callable:
@@ -393,7 +402,7 @@ def sample_around_x(raw_samples, constraint_callable):
 
 
 
-def create_available_options(param_space, params, constraint_callable):
+def create_available_options(param_space, params, constraint_callable, normalize, mins_x, maxs_x):
 	''' build cartesian product space of options, then remove options
 	which have already been measured. Returns an (num_options, num_dims)
 	torch tensor with all possible options
@@ -401,6 +410,8 @@ def create_available_options(param_space, params, constraint_callable):
 		param_space (obj): Olympus parameter space object
 		params (list): parameters from the current Campaign
 		constraint_callable (callable):
+		mins_x (np.array): minimum values of each parameter space dimension 
+		maxs_x (np.array): maximum values of each parameter 
 	'''
 	# make sure params are proper data type
 	real_params = []
@@ -439,8 +450,14 @@ def create_available_options(param_space, params, constraint_callable):
 			current_avail_feat.append(np.concatenate(ohe))
 			current_avail_cat.append(elem)
 
-	current_avail_feat_unconst = torch.tensor(np.array(current_avail_feat))
-	current_avail_cat_unconst = np.array(current_avail_cat)
+	current_avail_feat_unconst = np.array(current_avail_feat)
+	current_avail_cat_unconst  =  np.array(current_avail_cat)
+
+	# forward normalize the options before evaluating the c
+	if normalize:
+		current_avail_feat_unconst = torch.tensor(forward_normalize(current_avail_feat_unconst, mins_x, maxs_x))
+
+
 
 	# remove options which are infeasible given the feasibility surrogate model
 	# and the threshold
