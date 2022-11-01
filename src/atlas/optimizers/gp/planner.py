@@ -282,6 +282,7 @@ class BoTorchPlanner(BasePlanner):
 			# optimize acquisition function
 			#-------------------------------
 
+
 			acquisition_optimizer = AcquisitionOptimizer(
 				self.acquisition_optimizer_kind,
 				self.param_space,

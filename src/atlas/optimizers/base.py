@@ -422,8 +422,6 @@ class BasePlanner(CustomPlanner):
 			self._values = np.array(self._values).reshape(-1, 1)
 
 
-
-
 	def fca_constraint(self, X):
 		''' Each callable is expected to take a `(num_restarts) x q x d`-dim tensor as an
 			input and return a `(num_restarts) x q`-dim tensor with the constraint
@@ -447,7 +445,19 @@ class BasePlanner(CustomPlanner):
 		# this expression is >= 0 for a feasible point, < 0 for an infeasible point
 		# p_feas should be 1 - P(infeasible|X) which is returned by the classifier
 		with gpytorch.settings.cholesky_jitter(1e-1):
-			constraint_val = (1. - self.cla_likelihood(self.cla_model(X.float())).mean.unsqueeze(-1).double()) - self.feas_param
+			p_infeas = self.cla_likelihood(self.cla_model(X.float())).mean.unsqueeze(-1).double()
+			if self.problem_type in ['fully_categorical', 'fully_discrete']:
+				_max  = torch.amax(p_infeas)
+				_min  = torch.amin(p_infeas)
+				assert torch.abs(_max-_min) > 1e-6
+				p_infeas = (p_infeas-_min)/(_max-_min)
+
+
+			constraint_val = (1.-p_infeas) - self.feas_param
+			#constraint_val = (1. - self.cla_likelihood(self.cla_model(X.float())).mean.unsqueeze(-1).double()) - self.feas_param
 
 
 		return constraint_val
+
+
+

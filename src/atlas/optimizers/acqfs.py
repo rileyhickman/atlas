@@ -10,6 +10,7 @@ import gpytorch
 from botorch.acquisition import AcquisitionFunction, ExpectedImprovement
 from botorch.acquisition.monte_carlo import qExpectedImprovement, qNoisyExpectedImprovement
 
+from atlas import Logger
 from atlas.optimizers.utils import forward_normalize, propose_randomly, cat_param_to_feat
 
 from copy import deepcopy
@@ -452,8 +453,9 @@ def create_available_options(param_space, params, constraint_callable, normalize
 
 	# forward normalize the options before evaluating the c
 	if normalize:
-		current_avail_feat_unconst = torch.tensor(forward_normalize(current_avail_feat_unconst, mins_x, maxs_x))
+		current_avail_feat_unconst = forward_normalize(current_avail_feat_unconst, mins_x, maxs_x)
 
+	current_avail_feat_unconst = torch.tensor(current_avail_feat_unconst)
 
 
 	# remove options which are infeasible given the feasibility surrogate model
@@ -461,8 +463,16 @@ def create_available_options(param_space, params, constraint_callable, normalize
 	if constraint_callable is not None:
 		# FCA approach, apply feasibility constraint
 		constraint_input = current_avail_feat_unconst.view(current_avail_feat_unconst.shape[0], 1, current_avail_feat_unconst.shape[1])
-		feas_mask = torch.where( constraint_callable(constraint_input) >= 0.)[0]
+		constraint_vals = constraint_callable(constraint_input)
+		print('constraint_vals : ', constraint_vals)
+		print('constraint_vals max : ', torch.amax(constraint_vals))
+		print('constraint_vals min : ', torch.amin(constraint_vals))
+
+		feas_mask = torch.where( constraint_vals >= 0.)[0]
+		print(f'{feas_mask.shape[0]}/{current_avail_feat_unconst.shape[0]} options are feasible')
 		if feas_mask.shape[0] == 0:
+			msg = 'No feasible samples after FCA constraint, resorting back to full space'
+			Logger.log(msg, 'WARNING')
 			# if we have zero feasible samples
 			# resort back to the full set of unobserved options
 			current_avail_feat = current_avail_feat_unconst
