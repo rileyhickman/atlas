@@ -282,9 +282,6 @@ class FeasibilityAwareEI(ExpectedImprovement):
 		elif self.feas_strategy == 'fca':
 			return acqf
 		elif self.feas_strategy == 'fia':
-			# print('infeas_ratio : ', self.infeas_ratio)
-			# print('feas_param : ', self.feas_param)
-			# print('exponent : ', self.infeas_ratio**self.feas_param)
 			return ((1. - self.infeas_ratio**self.feas_param) * acqf) + ((self.infeas_ratio**self.feas_param)*(p_feas))
 		elif 'naive-' in self.feas_strategy:
 			if self.use_p_feas_only:
@@ -478,7 +475,5 @@ def create_available_options(param_space, params, constraint_callable, normalize
 	else:
 		current_avail_feat = current_avail_feat_unconst
 		current_avail_cat  = current_avail_cat_unconst
-
-	print('current avail feat shape : ', current_avail_feat.shape)
 
 	return current_avail_feat, current_avail_cat

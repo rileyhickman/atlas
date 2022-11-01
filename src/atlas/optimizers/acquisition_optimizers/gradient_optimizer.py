@@ -127,8 +127,6 @@ class GradientOptimizer():
 					message = 'Could not find inital conditions for constrianed optimization...'
 					Logger.log(message, 'FATAL')
 
-		# print('batch_initial_conditions : ', batch_initial_conditions)
-		print('batch_initial_conditions shape : ', batch_initial_conditions.shape)
 
 		if not self.known_constraints and not self.feas_strategy =='fca':
 			# we dont have any constraints
@@ -181,12 +179,6 @@ class GradientOptimizer():
 			mins_x=self._mins_x, maxs_x=self._maxs_x,
 		)
 
-		# NOTE: THIS WILL HAVE ALREADY BEEN DONE IN create_available_options
-		# if self.has_descriptors:
-		# 	self.choices_feat = forward_normalize(
-		# 		self.choices_feat.detach().numpy(), self._mins_x, self._maxs_x,
-		# 	)
-		# 	self.choices_feat = torch.tensor(self.choices_feat)
 
 		results, best_idx = self._optimize_acqf_discrete(
 			acq_function=self.acqf,
@@ -210,7 +202,6 @@ class GradientOptimizer():
 				for _ in range(q):
 					with torch.no_grad():
 						acq_values = torch.cat([acq_function(X_) for X_ in choices_batched.split(max_batch_size)])
-						# print(acq_values)
 					best_idx = torch.argmax(acq_values)
 					candidate_list.append(choices_batched[best_idx])
 					acq_value_list.append(acq_values[best_idx])
@@ -242,9 +233,7 @@ class GradientOptimizer():
 				with torch.no_grad():
 					acq_values = torch.cat([acq_function(X_) for X_ in choices_batched.split(max_batch_size)])
 				best_idxs = list(torch.argsort(acq_values, descending=True).detach().numpy())[:q]
-				# print(best_idxs)
-				#
-				# quit()
+	
 
 				return [choices[best_idx] for best_idx in best_idxs], best_idxs
 

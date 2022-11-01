@@ -197,7 +197,8 @@ class BasePlanner(CustomPlanner):
 				loss.backward()
 				optimizer.step()
 		vgp_train_time = time.time() - start_time
-		print(f' >>> [{self.vgp_iters} epochs] VGP trained in {round(vgp_train_time,3)} sec \t Loss : {round(loss.item(), 3)} ')
+		msg = f' >>> [{self.vgp_iters} epochs] VGP trained in {round(vgp_train_time,3)} sec \t Loss : {round(loss.item(), 3)} '
+		Logger.log(msg, 'INFO')
 
 		return model, likelihood
 
