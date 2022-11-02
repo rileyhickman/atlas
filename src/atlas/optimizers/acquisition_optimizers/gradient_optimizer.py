@@ -87,6 +87,7 @@ class GradientOptimizer():
 			batch_initial_conditions = get_batch_initial_conditions(
 				num_restarts=200, batch_size=self.batch_size, param_space=self.param_space,
 				constraint_callable=nonlinear_inequality_constraints,
+				has_descriptors=self.has_descriptors,
 				mins_x=self._mins_x, maxs_x=self._maxs_x,
 			)
 			if type(batch_initial_conditions) == type(None):
@@ -99,6 +100,7 @@ class GradientOptimizer():
 				batch_initial_conditions = get_batch_initial_conditions(
 					num_restarts=200, batch_size=self.batch_size, param_space=self.param_space,
 					constraint_callable=nonlinear_inequality_constraints,
+					has_descriptors=self.has_descriptors,
 					mins_x=self._mins_x, maxs_x=self._maxs_x,
 				)
 
@@ -119,6 +121,7 @@ class GradientOptimizer():
 				batch_initial_conditions = get_batch_initial_conditions(
 					num_restarts=200, batch_size=self.batch_size, param_space=self.param_space,
 					constraint_callable=nonlinear_inequality_constraints,
+					has_descriptors=self.has_descriptors,
 					mins_x=self._mins_x, maxs_x=self._maxs_x,
 
 				)
@@ -176,6 +179,7 @@ class GradientOptimizer():
 
 		self.choices_feat, self.choices_cat = create_available_options(
 			self.param_space, self._params, constraint_callable, normalize=self.has_descriptors,
+			has_descriptors=self.has_descriptors,
 			mins_x=self._mins_x, maxs_x=self._maxs_x,
 		)
 

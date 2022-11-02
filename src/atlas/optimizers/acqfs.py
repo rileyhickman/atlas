@@ -301,6 +301,7 @@ def get_batch_initial_conditions(
 	constraint_callable,
 	mins_x, 
 	maxs_x,
+	has_descriptors,
 	num_chances=15,
 
 ):
@@ -323,7 +324,7 @@ def get_batch_initial_conditions(
 	# take 15*num_restarts points randomly and evaluate the constraint function on all of
 	# them, if we have enough, proceed, if not proceed to sequential rejection sampling
 	num_raw_samples = 15*num_restarts
-	raw_samples, _ = propose_randomly(num_raw_samples, param_space)
+	raw_samples, _ = propose_randomly(num_raw_samples, param_space, has_descriptors)
 
 	# forward normalize the randomly generated samples
 	raw_samples = forward_normalize(raw_samples, mins_x, maxs_x)
@@ -400,7 +401,7 @@ def sample_around_x(raw_samples, constraint_callable):
 
 
 
-def create_available_options(param_space, params, constraint_callable, normalize, mins_x, maxs_x):
+def create_available_options(param_space, params, constraint_callable, normalize, mins_x, maxs_x, has_descriptors):
 	''' build cartesian product space of options, then remove options
 	which have already been measured. Returns an (num_options, num_dims)
 	torch tensor with all possible options
@@ -442,7 +443,7 @@ def create_available_options(param_space, params, constraint_callable, normalize
 			ohe = []
 			for val, obj in zip(elem, param_space):
 				if obj.type=='categorical':
-					ohe.append(cat_param_to_feat(obj, val))
+					ohe.append(cat_param_to_feat(obj, val, has_descriptors))
 				else:
 					ohe.append([val])
 			current_avail_feat.append(np.concatenate(ohe))

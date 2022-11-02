@@ -47,7 +47,7 @@ def get_cat_dims(param_space):
 
 	return cat_dims
 
-def get_fixed_features_list(param_space):
+def get_fixed_features_list(param_space, has_descriptors):
 	dim = 0
 	fixed_features_list = []
 	cat_dims = []
@@ -71,7 +71,7 @@ def get_fixed_features_list(param_space):
 		ohe = []
 		#for val, obj in zip(elem, param_space):
 		for val, obj in zip(elem, cat_params):
-			ohe.append(cat_param_to_feat(obj, val))
+			ohe.append(cat_param_to_feat(obj, val, has_descriptors))
 		current_avail_feat.append(np.concatenate(ohe))
 		current_avail_cat.append(elem)
 
@@ -87,7 +87,7 @@ def get_fixed_features_list(param_space):
 
 
 
-def cat_param_to_feat(param, val):
+def cat_param_to_feat(param, val, has_descriptors):
 	''' convert the option selection of a categorical variable (usually encoded
 	as a string) to a machine readable feature vector
 	Args:
@@ -97,7 +97,7 @@ def cat_param_to_feat(param, val):
 	# get the index of the selected value amongst the options
 
 	arg_val = param.options.index(val)
-	if np.all([d==None for d in param.descriptors]):
+	if not has_descriptors:
 		# no provided descriptors, resort to one-hot encoding
 		feat = np.zeros(len(param.options))
 		feat[arg_val] += 1.
@@ -107,7 +107,7 @@ def cat_param_to_feat(param, val):
 	return feat
 
 
-def propose_randomly(num_proposals, param_space):
+def propose_randomly(num_proposals, param_space, has_descriptors):
 	''' Randomly generate num_proposals proposals. Returns the numerical
 	representation of the proposals as well as the string based representation
 	for the categorical variables
@@ -133,7 +133,7 @@ def propose_randomly(num_proposals, param_space):
 			elif param.type == 'categorical':
 				options = param.options
 				p = np.random.choice(options, size=None, replace=False)
-				feat = cat_param_to_feat(param, p)
+				feat = cat_param_to_feat(param, p, has_descriptors)
 				sample.extend(feat)  # extend because feat is vector
 				raw_sample.append(p)
 		proposals.append(sample)

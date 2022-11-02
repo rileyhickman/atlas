@@ -64,6 +64,7 @@ class BasePlanner(CustomPlanner):
 		feas_param=0.2,
 		batch_size=1,
 		random_seed=None,
+		use_descriptors=False,
 		num_init_design=5,
 		init_design_strategy='random',
 		acquisition_optimizer_kind='gradient', # gradient, genetic
@@ -90,6 +91,7 @@ class BasePlanner(CustomPlanner):
 		else:
 			self.random_seed = random_seed
 		np.random.seed(self.random_seed)
+		self.use_descriptors = use_descriptors
 		self.num_init_design = num_init_design
 		self.init_design_strategy = init_design_strategy
 		self.acquisition_optimizer_kind = acquisition_optimizer_kind
@@ -147,20 +149,29 @@ class BasePlanner(CustomPlanner):
 		if self.problem_type == 'fully_categorical':
 			descriptors = []
 			for p in self.param_space:
-				descriptors.extend(p.descriptors)
-			if all(d is None for d in descriptors):
-				self.has_descriptors = False
-			else:
-				self.has_descriptors = True
-		elif self.problem_type in ['mixed','mixed_dis_cat']:
-			descriptors = []
-			for p in self.param_space:
-				if p.type == 'categorical':
+				if not self.use_descriptors:
+					descriptors.extend([None for _ in range(len(p.options))])
+				else:
 					descriptors.extend(p.descriptors)
 			if all(d is None for d in descriptors):
 				self.has_descriptors = False
 			else:
 				self.has_descriptors = True
+
+		
+		elif self.problem_type in ['mixed','mixed_dis_cat']:
+			descriptors = []
+			for p in self.param_space:
+				if p.type == 'categorical':
+					if not self.use_descriptors:
+						descriptors.extend([None for _ in range(len(p.options))])
+					else:
+						descriptors.extend(p.descriptors)
+			if all(d is None for d in descriptors):
+				self.has_descriptors = False
+			else:
+				self.has_descriptors = True
+
 		else:
 			self.has_descriptors = False
 
@@ -240,7 +251,7 @@ class BasePlanner(CustomPlanner):
 			sample_x = []
 			for param_ix, (space_true, element) in enumerate(zip(self.param_space, params_cla[ix])):
 				if self.param_space[param_ix].type == 'categorical':
-					feat = cat_param_to_feat(space_true, element)
+					feat = cat_param_to_feat(space_true, element, self.has_descriptors)
 					sample_x.extend(feat)
 				else:
 					sample_x.append(float(element))
@@ -295,7 +306,7 @@ class BasePlanner(CustomPlanner):
 			sample_x = []
 			for param_ix, (space_true, element) in enumerate(zip(self.param_space, X[ix])):
 				if self.param_space[param_ix].type == 'categorical':
-					feat = cat_param_to_feat(space_true, element)
+					feat = cat_param_to_feat(space_true, element, self.has_descriptors)
 					sample_x.extend(feat)
 				else:
 					sample_x.append(float(element))
@@ -337,7 +348,7 @@ class BasePlanner(CustomPlanner):
 			sample_x = []
 			for param_ix, (space_true, element) in enumerate(zip(self.param_space, X[ix])):
 				if self.param_space[param_ix].type == 'categorical':
-					feat = cat_param_to_feat(space_true, element)
+					feat = cat_param_to_feat(space_true, element, self.has_descriptors)
 					sample_x.extend(feat)
 				else:
 					sample_x.append(float(element))
