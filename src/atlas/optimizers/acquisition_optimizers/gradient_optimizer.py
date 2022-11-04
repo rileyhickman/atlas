@@ -237,7 +237,7 @@ class GradientOptimizer():
 				with torch.no_grad():
 					acq_values = torch.cat([acq_function(X_) for X_ in choices_batched.split(max_batch_size)])
 				best_idxs = list(torch.argsort(acq_values, descending=True).detach().numpy())[:q]
-	
+
 
 				return [choices[best_idx] for best_idx in best_idxs], best_idxs
 
