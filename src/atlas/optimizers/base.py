@@ -158,7 +158,7 @@ class BasePlanner(CustomPlanner):
 			else:
 				self.has_descriptors = True
 
-		
+
 		elif self.problem_type in ['mixed','mixed_dis_cat']:
 			descriptors = []
 			for p in self.param_space:
@@ -261,7 +261,7 @@ class BasePlanner(CustomPlanner):
 
 		train_x_cla, train_x_reg = np.array(train_x_cla), np.array(train_x_reg)
 
-		
+
 
 		# scale the training data - normalize inputs and standardize outputs
 		# TODO: should we scale all the parameters together?
@@ -460,7 +460,9 @@ class BasePlanner(CustomPlanner):
 			if self.problem_type in ['fully_categorical', 'fully_discrete']:
 				_max  = torch.amax(p_infeas)
 				_min  = torch.amin(p_infeas)
-				assert torch.abs(_max-_min) > 1e-6
+				if not torch.abs(_max-_min) > 1e-6:
+					_max=1.0
+					_min=0.0
 				p_infeas = (p_infeas-_min)/(_max-_min)
 
 
@@ -469,6 +471,3 @@ class BasePlanner(CustomPlanner):
 
 
 		return constraint_val
-
-
-
