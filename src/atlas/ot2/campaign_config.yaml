@@ -1,0 +1,78 @@
+preparation:
+  # drug information
+  drugs:
+    drug1:
+      name: "paclitaxel"
+      # drug molecular weight (g/mol)
+      mol_wt: 853.906
+      # prefered target concentration (mg/mL)
+      target_conc: 3.0
+      # mass weighted (mg)
+      mass_weighted: 20.78
+      # solvent
+      solvent: "ethanol"
+      fractional_range:
+        - 0.05
+        - 0.4
+      levels:
+        - 0.05
+        - 0.1
+        - 0.2
+        - 0.4
+  lipids:
+    # lipid information
+    lipid1:
+      name: "cholesterol"
+      mol_wt: 386.65
+      target_conc: 6.0
+      mass_weighted: 46.97
+      solvent: "ethanol"
+      fractional_range:
+        - 0.4
+        - 0.9
+      levels:
+        - 0.4
+        - 0.9
+    lipid2:
+      name: "dspc"
+      mol_wt: 790.15
+      target_conc: 6.0
+      mass_weighted: 46.69
+      solvent: "ethanol"
+      fractional_range:
+        - "cholesterol"
+        - "dmg-peg_2000"
+      levels: null
+    lipid3:
+      name: "dmg-peg_2000"
+      mol_wt: 2509.2
+      target_conc: 4.0
+      mass_weighted: 19.74
+      solvent: "ethanol"
+      fractional_range:
+        - 0.0
+        - 0.05
+      levels:
+        - 0.00
+        - 0.015
+        - 0.03
+        - 0.05
+  solvent:
+    solvent1:
+      name: "ethonol"
+processing_params:
+  # organic phase per stock solution (uL)
+  org_phase_per_stock: 800
+  # organic phase per well (uL)
+  org_phase_per_well: 50
+  # total lipid concentration (umol/well)
+  total_lipid_conc: 0.2
+objectives:
+  obj1:
+    name: "encapsulation_efficiency"
+    goal: "max"
+    type: "continuous"
+general:
+  batch_size: 2
+  # number of decimal places after uL
+  volume_prec: 0
