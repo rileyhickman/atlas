@@ -57,9 +57,9 @@ preparation:
         - 0.015
         - 0.03
         - 0.05
-  solvent:
+  solvents:
     solvent1:
-      name: "ethonol"
+      name: "ethanol"
 processing_params:
   # organic phase per stock solution (uL)
   org_phase_per_stock: 800
@@ -76,3 +76,20 @@ general:
   batch_size: 2
   # number of decimal places after uL
   volume_prec: 0
+  budget: 10 # maximum allowed measurements 
+  timeout: 3600 # total allowed time for experiment (seconds)
+sheets:
+  sa_filename: null
+  sheet_name: "test_atlas"  # name of google sheet
+  worksheet_name: "Sheet1"  # name of worksheet
+  monitor_interval: 5 # sheet monitor interval in seconds
+protocol:
+  name: "dummy"
+  parameter_map:
+    paclitaxel: "drug"
+    cholesterol: "cholesterol"
+    dpsc: "pc"
+    dmg-peg-2000: "peglipid"
+    ethanol: "ethanol"
+  custom_labware_path: "/path/to/file"
+  simulation: True # wheter or not to simulate the opentrons protocol

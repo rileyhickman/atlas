@@ -23,7 +23,6 @@ def test_continuous_hypervolume():
 
 	moo_surface = Surface(kind='MultFonseca')
 
-
 	planner = BoTorchPlanner(
 		goal='minimize',
 		feas_strategy='naive-0',

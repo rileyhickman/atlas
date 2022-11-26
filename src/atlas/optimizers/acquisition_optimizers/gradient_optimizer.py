@@ -263,7 +263,7 @@ class GradientOptimizer():
 
 
 		# TODO: clean this bit up
-		if self.problem_type in ['fully_categorical', 'mixed', 'mixed_dis_cat'] and not self.has_descriptors:
+		if self.problem_type in ['fully_categorical', 'fully_discrete', 'mixed', 'mixed_dis_cat'] and not self.has_descriptors:
 			# project the sample back to Olympus format
 			samples = []
 			# if len(results_np.shape) == 1:
@@ -278,7 +278,7 @@ class GradientOptimizer():
 				samples.append(ParameterVector().from_dict(sample, self.param_space))
 
 
-		elif self.problem_type in ['fully_categorical', 'mixed', 'mixed_dis_cat'] and self.has_descriptors:
+		elif self.problem_type in ['fully_categorical', 'fully_discrete', 'mixed', 'mixed_dis_cat'] and self.has_descriptors:
 
 			samples = []
 			# if len(results_torch.shape) == 1:

@@ -17,7 +17,8 @@ from olympus.objects import (
 from olympus.campaigns import Campaign, ParameterSpace
 from olympus.planners import RandomSearch
 
-# from atlas.optimizers.gp.planner import BoTorchPlanner
+from atlas.optimizers.gp.planner import BoTorchPlanner
+from atlas.optimizers.acqfs import create_available_options
 
 def get_param_space(campaign_config):
     ''' Generate Olympus ParameterSpace object based on the supplied
@@ -85,10 +86,6 @@ def get_value_space(campaign_config):
     return value_space
 
 
-#-----------------------------------------
-# helper functions for volume calculations
-# ----------------------------------------
-
 def compute_target_conc(campaign_config):
     ''' Compute molar target concentrations and total solvent values
     '''
@@ -130,11 +127,15 @@ def compute_total_lipid_masses(campaign_config, batch_params):
         )
     return np.array(total_lipid_masses)
 
-def compute_transfer_volumes(campaign_config, batch_params,):
+def compute_transfer_volumes(campaign_config, batch_params):
     volume_prec = campaign_config['general']['volume_prec']
     prep = campaign_config['preparation']
     drugs = prep['drugs']
     lipids = prep['lipids']
+
+    org_phase_per_stock = campaign_config['processing_params']['org_phase_per_stock']
+    org_phase_per_well = campaign_config['processing_params']['org_phase_per_well']
+    total_lipid_conc = campaign_config['processing_params']['total_lipid_conc']
 
     total_lipid_masses = compute_total_lipid_masses(
         campaign_config, batch_params
@@ -144,8 +145,6 @@ def compute_transfer_volumes(campaign_config, batch_params,):
     # compute drug volumes
     for name, info in drugs.items():
         frac_amt = np.array([params[drugs[name]['name']] for params in batch_params])
-        org_phase_per_stock = campaign_config['processing_params']['org_phase_per_stock']
-        org_phase_per_well = campaign_config['processing_params']['org_phase_per_well']
         target_conc = drugs[name]['target_conc']
         vols = frac_amt*total_lipid_masses/org_phase_per_well*org_phase_per_stock/target_conc
 
@@ -154,22 +153,24 @@ def compute_transfer_volumes(campaign_config, batch_params,):
     # compute lipid volumes --> use molar target volume instead
     for name, info in lipids.items():
         frac_amt = np.array([params[lipids[name]['name']] for params in batch_params])
-        org_phase_per_stock = campaign_config['processing_params']['org_phase_per_stock']
-        org_phase_per_well = campaign_config['processing_params']['org_phase_per_well']
         target_conc_mol = lipids[name]['target_conc_mol']
-        total_lipid_conc = campaign_config['processing_params']['total_lipid_conc']
         vols = frac_amt*total_lipid_conc/org_phase_per_well*org_phase_per_stock/target_conc_mol*1000.
 
         transfer_volumes[lipids[name]['name']] = np.around(vols, decimals=volume_prec)
 
+    # compute the solvent transfer volumes
+    solvents = campaign_config['preparation']['solvents']
+    if not len(solvents.keys())==1:
+        print('Multiple solvents not yet implemented...')
+        quit()
+    else:
+        vols = org_phase_per_stock - np.sum(list(transfer_volumes.values()), axis=0)
+        transfer_volumes[solvents['solvent1']['name']] = vols
+
+
     return transfer_volumes
 
-def func_to_full_params(
-    func_batch_params,
-    # func_param_space,
-    # full_param_space,
-    full_space_instructions
-):
+def func_to_full_params(func_batch_params, full_space_instructions):
     full_batch_params = []
 
     for func_params in func_batch_params:
@@ -184,9 +185,16 @@ def func_to_full_params(
     return full_batch_params
 
 
-def check_stock_solutions():
+def check_stock_solutions(func_param_space, full_param_space, full_space_instructions):
+    ''' Checks all possible options to see if there are any volumes that are 
+    < 20 uL and != 0.0
+    '''
+    # generate all possible options
+
+    create_available_options
 
     return None
+
 
 
 if __name__ == '__main__':
@@ -222,14 +230,15 @@ if __name__ == '__main__':
     full_campaign.set_value_space(value_space)
 
     # instantiate planner with functional parameter space
-    planner = RandomSearch(goal='maximize')
+    #planner = RandomSearch(goal='maximize')
+    planner = BoTorchPlanner(
+        goal='maximize',
+        batch_size=batch_size,
+    )
     planner.set_param_space(func_param_space)
 
     # ask for recommendations
-    func_batch_params = []
-    for _ in range(batch_size):
-        params = planner.recommend(func_campaign.observations)
-        func_batch_params.extend(params)
+    func_batch_params = planner.recommend(func_campaign.observations)
 
     assert len(func_batch_params) == batch_size
     print(f'\nFUNC PARAMS : {func_batch_params}')

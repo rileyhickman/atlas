@@ -111,9 +111,10 @@ class BoTorchPlanner(BasePlanner):
 
 	def build_train_regression_gp(self, train_x, train_y):
 		''' Build the regression GP model and likelihood
+
 		'''
 		# infer the model based on the parameter types
-		if self.problem_type == 'fully_continuous':
+		if self.problem_type in ['fully_continuous','fully_discrete']:
 			model = SingleTaskGP(train_x, train_y)
 		elif self.problem_type in ['mixed']:
 			# TODO: implement a method to retrieve the categorical dimensions
