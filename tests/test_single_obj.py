@@ -20,6 +20,8 @@ INIT_DESIGN_STRATEGIES_CAT = ['random']
 
 INIT_DESIGN_STRATEGIES_MIXED = ['random']
 
+INIT_DESIGN_STRATEGIES_DISC = ['random']
+
 @pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_CONT)
 def test_init_design_cont(init_design_strategy):
 	run_continuous(init_design_strategy)
@@ -29,9 +31,16 @@ def test_init_design_cont(init_design_strategy):
 def test_init_design_cat(init_design_strategy):
 	run_categorical(init_design_strategy)
 
+@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_DISC)
+def test_init_design_disc(init_design_strategy):
+	run_discrete(init_design_strategy)
+
+
 @pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_MIXED)
 def test_init_design_mixed(init_design_strategy):
 	run_mixed(init_design_strategy)
+
+
 
 
 def run_continuous(init_design_strategy):
@@ -52,7 +61,7 @@ def run_continuous(init_design_strategy):
 		feas_strategy='naive-0',
 		init_design_strategy=init_design_strategy,
 		num_init_design=4,
-		batch_size=1, 
+		batch_size=1,
 	)
 
 	planner.set_param_space(param_space)
@@ -88,7 +97,7 @@ def run_categorical(init_design_strategy):
 		goal='minimize',
 		feas_strategy='naive-0',
 		init_design_strategy=init_design_strategy,
-		num_init_design=4, 
+		num_init_design=4,
 		batch_size=1,
 	)
 	planner.set_param_space(surface.param_space)
@@ -106,6 +115,57 @@ def run_categorical(init_design_strategy):
 
 	assert len(campaign.observations.get_params())==BUDGET
 	assert len(campaign.observations.get_values())==BUDGET
+
+
+def run_discrete(init_design_strategy):
+
+	def surface(x):
+		return np.sin(8*x[0]) - 2*np.cos(6*x[1]) + np.exp(-2.*x[2])
+
+	param_space = ParameterSpace()
+	param_0 = ParameterDiscrete(
+		name='param_0',
+		options=[0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0],
+	)
+	param_1 = ParameterDiscrete(
+		name='param_1',
+		options=[0.0, 0.25, 0.5, 0.75, 1.0],
+	)
+	param_2 = ParameterDiscrete(
+		name='param_2',
+		options=[0.0, 0.25, 0.5, 0.75, 1.0],
+	)
+	param_space.add(param_0)
+	param_space.add(param_1)
+	param_space.add(param_2)
+
+	planner = BoTorchPlanner(
+		goal='minimize',
+		feas_strategy='naive-0',
+		init_design_strategy=init_design_strategy,
+		num_init_design=4,
+		batch_size=1,
+	)
+
+	planner.set_param_space(param_space)
+
+	campaign = Campaign()
+	campaign.set_param_space(param_space)
+
+	BUDGET = 10
+
+	while len(campaign.observations.get_values()) < BUDGET:
+
+		samples = planner.recommend(campaign.observations)
+		for sample in samples:
+			sample_arr = sample.to_array()
+			measurement = surface(sample_arr)
+			campaign.add_observation(sample_arr, measurement)
+
+
+	assert len(campaign.observations.get_params())==BUDGET
+	assert len(campaign.observations.get_values())==BUDGET
+
 
 
 def run_mixed(init_design_strategy):
@@ -149,10 +209,10 @@ def run_mixed(init_design_strategy):
 	campaign.set_param_space(param_space)
 
 	planner = BoTorchPlanner(
-					goal='maximize', 
+					goal='maximize',
 					feas_strategy='naive-0',
 					init_design_strategy=init_design_strategy,
-					num_init_design=4, 
+					num_init_design=4,
 					batch_size=1,
 				)
 	planner.set_param_space(param_space)
@@ -181,8 +241,11 @@ def run_mixed(init_design_strategy):
 
 
 
+
+
 if __name__ == '__main__':
 	#pass
-	run_continuous('lhs')
+	run_discrete('random')
+	#run_continuous('lhs')
 	# run_categorical('random')
 	# run_mixed('random')

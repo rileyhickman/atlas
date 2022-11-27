@@ -251,7 +251,7 @@ class BasePlanner(CustomPlanner):
 			sample_x = []
 			for param_ix, (space_true, element) in enumerate(zip(self.param_space, params_cla[ix])):
 				if self.param_space[param_ix].type == 'categorical':
-					feat = cat_param_to_feat(space_true, element, self.has_descriptors)
+					feat = cat_param_to_feat(space_true, element, has_descriptors=self.has_descriptors)
 					sample_x.extend(feat)
 				else:
 					sample_x.append(float(element))
@@ -306,7 +306,7 @@ class BasePlanner(CustomPlanner):
 			sample_x = []
 			for param_ix, (space_true, element) in enumerate(zip(self.param_space, X[ix])):
 				if self.param_space[param_ix].type == 'categorical':
-					feat = cat_param_to_feat(space_true, element, self.has_descriptors)
+					feat = cat_param_to_feat(space_true, element, has_descriptors=self.has_descriptors)
 					sample_x.extend(feat)
 				else:
 					sample_x.append(float(element))
@@ -348,7 +348,7 @@ class BasePlanner(CustomPlanner):
 			sample_x = []
 			for param_ix, (space_true, element) in enumerate(zip(self.param_space, X[ix])):
 				if self.param_space[param_ix].type == 'categorical':
-					feat = cat_param_to_feat(space_true, element, self.has_descriptors)
+					feat = cat_param_to_feat(space_true, element, has_descriptors=self.has_descriptors)
 					sample_x.extend(feat)
 				else:
 					sample_x.append(float(element))
@@ -386,7 +386,7 @@ class BasePlanner(CustomPlanner):
 			sample_x = []
 			for param_ix, (space_true, element) in enumerate(zip(self.param_space, X[ix])):
 				if self.param_space[param_ix].type == 'categorical':
-					feat = cat_param_to_feat(space_true, element)
+					feat = cat_param_to_feat(space_true, element, has_descriptors=self.has_descriptors)
 					sample_x.extend(feat)
 				else:
 					sample_x.append(float(element))

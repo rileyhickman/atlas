@@ -299,7 +299,7 @@ def get_batch_initial_conditions(
 	batch_size,
 	param_space,
 	constraint_callable,
-	mins_x, 
+	mins_x,
 	maxs_x,
 	has_descriptors,
 	num_chances=15,
@@ -314,8 +314,8 @@ def get_batch_initial_conditions(
 		batch_size (int): number of samples to recommend per ask/tell call (fixed to 1)
 		param_space (obj): Olympus parameter space object for the given problem
 		constraint_callable (list): list of callables which specifies the constraint function
-		mins_x (np.array): minimum values of each parameter space dimension 
-		maxs_x (np.array): maximum values of each parameter 
+		mins_x (np.array): minimum values of each parameter space dimension
+		maxs_x (np.array): maximum values of each parameter
 		num_chances (int):
 	Returns:
 		a torch.tensor with shape (num_restarts, batch_size, num_dims)
@@ -409,8 +409,8 @@ def create_available_options(param_space, params, constraint_callable, normalize
 		param_space (obj): Olympus parameter space object
 		params (list): parameters from the current Campaign
 		constraint_callable (callable):
-		mins_x (np.array): minimum values of each parameter space dimension 
-		maxs_x (np.array): maximum values of each parameter 
+		mins_x (np.array): minimum values of each parameter space dimension
+		maxs_x (np.array): maximum values of each parameter
 	'''
 	# make sure params are proper data type
 	real_params = []

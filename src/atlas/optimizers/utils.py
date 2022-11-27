@@ -226,7 +226,8 @@ def project_to_olymp(
 				idx_counter += len(param.options)
 		elif param.type == 'discrete':
 			# TODO: discrete params not supported now
-			pass
+			# something is wrong if we make it here...
+			quit()
 		# add sample to dictionary
 		olymp_samples[param.name] = sample
 

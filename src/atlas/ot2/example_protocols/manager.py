@@ -34,7 +34,6 @@ class ProtocolManager:
 			}
 
 
-		
 	def load_protocol(self, protocol_name:str):
 		protocol_name_class = ProtocolLoader.file_to_class(protocol_name)
 		protocols_list_class = get_protocols_list()
@@ -47,9 +46,9 @@ class ProtocolManager:
 			module = ProtocolLoader.import_protocol(protocol_name_class)
 
 			return module
-	
+
 	def spawn_protocol_file(self):
-		
+
 		s = '#!/usr/bin/env python\n'
 		s += 'from opentrons import protocol_api\n'
 		s += 'from atlas.ot2.example_protocols.manager import ProtocolManager\n\n'
@@ -62,7 +61,7 @@ class ProtocolManager:
 		s += f'\tmanager = ProtocolManager(protocol_name="{self.protocol_name}", protocol_parameters=protocol_parameters)\n'
 		s += f'\tprotocol_module_instance = manager.protocol_module(parameters=protocol_parameters)\n'
 		s += '\tprotocol_module_instance.run(protocol)'
-		
+
 		with open(f'__OT2_file_{self.protocol_name}.py', 'w') as f:
 			f.write(s)
 
@@ -70,7 +69,7 @@ class ProtocolManager:
 	def copy_to_ot2(self):
 		''' Copy the file to the OT2
 		'''
-		# TODO: implement this 
+		# TODO: implement this
 		# https://support.opentrons.com/s/article/Connecting-to-your-OT-2-with-SSH#:~:text=In%20the%20Opentrons%20App%2C%20find,be%20made%20over%20Wi%2DFi.
 		# https://support.opentrons.com/s/article/Setting-up-SSH-access-to-your-OT-2
 		return None
@@ -79,21 +78,28 @@ class ProtocolManager:
 		''' Run the protocol on the OT2 server
 		'''
 		# https://docs.opentrons.com/v2/new_advanced_running.html
+
 		if simulation:
-			filename =f'__OT2_file_{self.protocol_name}.py'
+			filename = f'__OT2_file_{self.protocol_name}.py'
+			msg = f'Simulation of OT2 protocol "{self.protocol_name}" requested. Executing simulation with `opentrons_simulate {filename}`'
+			Logger.log(msg, 'WARNING')
 			result = subprocess.run(
-					f'opentrons_simulate {filename}', 
+					f'opentrons_simulate {filename}',
 					capture_output=True,
 					shell=True,
 				)
 			# TODO: parse the results of this
 			# print('\nstdout :', result.stdout)
 			# print('\nstderr : ', result.stderr)
-			
+			# quit()
+			if True:
+				Logger.log(f'Simualtion of OT2 protocol "{self.protocol_name}" finished successfully', 'INFO')
+			else:
+				Logger.log(f'Simulation of OT2 protocol "{self.protocol_name}" failed!', 'FATAL')
 
 		else:
 			raise NotImplementedError
-		
+
 
 
 
@@ -109,4 +115,3 @@ if __name__ == '__main__':
 
 	manager = ProtocolManager(protocol_name='lnp_small_molecule', protocol_parameters=parameters)
 	manager.spawn_protocol_file()
-

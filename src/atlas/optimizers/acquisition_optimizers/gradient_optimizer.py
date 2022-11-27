@@ -62,7 +62,6 @@ class GradientOptimizer():
 		self.choices_feat, self.choices_cat = None, None
 
 
-
 	def optimize(self):
 		best_idx = None # only needed for the fully categorical case
 		if self.problem_type == 'fully_continuous':
@@ -149,10 +148,9 @@ class GradientOptimizer():
 
 		return results
 
-
 	def _optimize_mixed(self):
 
-		fixed_features_list = get_fixed_features_list(self.param_space)
+		fixed_features_list = get_fixed_features_list(self.param_space, self.has_descriptors)
 
 		results, _ = optimize_acqf_mixed(
 			acq_function=self.acqf,
@@ -263,12 +261,10 @@ class GradientOptimizer():
 
 
 		# TODO: clean this bit up
-		if self.problem_type in ['fully_categorical', 'fully_discrete', 'mixed', 'mixed_dis_cat'] and not self.has_descriptors:
+		if self.problem_type in ['fully_categorical', 'mixed', 'mixed_dis_cat'] and not self.has_descriptors:
+
 			# project the sample back to Olympus format
 			samples = []
-			# if len(results_np.shape) == 1:
-			# 	results_np = results_np.reshape(1, -1)
-			#results_torch = reverse_normalize(results_torch, self._mins_x, self._maxs_x)
 			for sample_ix in range(len(results_torch)):
 				sample = project_to_olymp(
 					results_torch[sample_ix], self.param_space,
@@ -278,8 +274,20 @@ class GradientOptimizer():
 				samples.append(ParameterVector().from_dict(sample, self.param_space))
 
 
-		elif self.problem_type in ['fully_categorical', 'fully_discrete', 'mixed', 'mixed_dis_cat'] and self.has_descriptors:
+		elif self.problem_type in ['fully_categorical', 'mixed', 'mixed_dis_cat'] and self.has_descriptors:
 
+			samples = []
+			# if len(results_torch.shape) == 1:
+			# 	results_torch = results_torch.reshape(1, -1)
+			for sample_ix in range(len(results_torch)):
+				sample = self.choices_cat[best_idx[sample_ix]]
+				olymp_sample = {}
+				for elem, name in zip(sample, [p.name for p in self.param_space]):
+					olymp_sample[name] = elem
+				samples.append(ParameterVector().from_dict(olymp_sample, self.param_space))
+
+
+		elif self.problem_type == 'fully_discrete':
 			samples = []
 			# if len(results_torch.shape) == 1:
 			# 	results_torch = results_torch.reshape(1, -1)

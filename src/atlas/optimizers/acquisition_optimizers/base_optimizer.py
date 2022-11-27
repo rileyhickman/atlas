@@ -27,21 +27,21 @@ class AcquisitionOptimizer():
 		self,
 		kind,
 		param_space,
-		acqf, 
-		bounds, 
+		acqf,
+		bounds,
 		known_constraints,
 		batch_size,
 		feas_strategy,
 		fca_constraint,
 		has_descriptors,
 		params,
-		mins_x, 
+		mins_x,
 		maxs_x,
 
 	):
 		self.kind = kind
 		self.param_space = param_space
-		self.acqf = acqf 
+		self.acqf = acqf
 		self.bounds = bounds
 		self.known_constraints = known_constraints
 		self.batch_size = batch_size
@@ -50,7 +50,7 @@ class AcquisitionOptimizer():
 		self.has_descriptors = has_descriptors
 		self._params = params
 		self._mins_x =  mins_x
-		self._maxs_x = maxs_x 
+		self._maxs_x = maxs_x
 
 		# check kind of acquisition optimization
 		if self.kind == 'gradient':
@@ -69,7 +69,7 @@ class AcquisitionOptimizer():
 			)
 
 		elif self.kind == 'genetic':
-			pass 
+			pass
 
 		else:
 			msg = f'Acquisition optimizer kind {self.kind} not known'
@@ -80,6 +80,3 @@ class AcquisitionOptimizer():
 	def optimize(self):
 		results = self.optimizer.optimize()
 		return  results
-	
-
-	

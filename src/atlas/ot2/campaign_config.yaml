@@ -1,65 +1,58 @@
 preparation:
-  # drug information
-  drugs:
-    drug1:
-      name: "paclitaxel"
-      # drug molecular weight (g/mol)
-      mol_wt: 853.906
-      # prefered target concentration (mg/mL)
-      target_conc: 3.0
-      # mass weighted (mg)
-      mass_weighted: 20.78
-      # solvent
-      solvent: "ethanol"
-      fractional_range:
-        - 0.05
-        - 0.4
-      levels:
-        - 0.05
-        - 0.1
-        - 0.2
-        - 0.4
-  lipids:
-    # lipid information
-    lipid1:
-      name: "cholesterol"
-      mol_wt: 386.65
-      target_conc: 6.0
-      mass_weighted: 46.97
-      solvent: "ethanol"
-      fractional_range:
-        - 0.4
-        - 0.9
-      levels:
-        - 0.4
-        - 0.9
-    lipid2:
-      name: "dspc"
-      mol_wt: 790.15
-      target_conc: 6.0
-      mass_weighted: 46.69
-      solvent: "ethanol"
-      fractional_range:
-        - "cholesterol"
-        - "dmg-peg_2000"
-      levels: null
-    lipid3:
-      name: "dmg-peg_2000"
-      mol_wt: 2509.2
-      target_conc: 4.0
-      mass_weighted: 19.74
-      solvent: "ethanol"
-      fractional_range:
-        - 0.0
-        - 0.05
-      levels:
-        - 0.00
-        - 0.015
-        - 0.03
-        - 0.05
-  solvents:
-    solvent1:
-      name: "ethanol"
+  paclitaxel:
+    type: "drug"  # component type
+    mol_wt: 853.906  # drug molecular weight (g/mol)
+    target_conc: 3.0   # prefered target concentration (mg/mL)
+    mass_weighted: 20.78  # mass weighted (mg)
+    solvent: "ethanol"   # solvent
+    fractional_range:
+      - 0.05
+      - 0.4
+    levels:
+      - 0.05
+      - 0.1
+      - 0.2
+      - 0.4
+  cholesterol:
+    type: "lipid"
+    mol_wt: 386.65
+    target_conc: 6.0
+    mass_weighted: 46.97
+    solvent: "ethanol"
+    fractional_range:
+      - 0.4
+      - 0.9
+    levels:
+      - 0.4
+      - 0.9
+  dspc:
+    type: "lipid"
+    mol_wt: 790.15
+    target_conc: 6.0
+    mass_weighted: 46.69
+    solvent: "ethanol"
+    fractional_range:
+      - "cholesterol"
+      - "dmg-peg_2000"
+    levels: null
+  dmg-peg_2000:
+    #name: "dmg-peg_2000"
+    type: "lipid"
+    mol_wt: 2509.2
+    target_conc: 4.0
+    mass_weighted: 19.74
+    solvent: "ethanol"
+    fractional_range:
+      - 0.0
+      - 0.05
+    levels:
+      - 0.00
+      - 0.015
+      - 0.03
+      - 0.05
+  ethanol:
+    #name: "ethanol"
+    type: "solvent"
 processing_params:
   # organic phase per stock solution (uL)
   org_phase_per_stock: 800
@@ -76,7 +69,7 @@ general:
   batch_size: 2
   # number of decimal places after uL
   volume_prec: 0
-  budget: 10 # maximum allowed measurements 
+  budget: 10 # maximum allowed measurements
   timeout: 3600 # total allowed time for experiment (seconds)
 sheets:
   sa_filename: null
@@ -93,3 +86,5 @@ protocol:
     ethanol: "ethanol"
   custom_labware_path: "/path/to/file"
   simulation: True # wheter or not to simulate the opentrons protocol
+  ot2_name: null  # ot2 name
+  ot2_server: null  # ot2 server address

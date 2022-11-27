@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 
 import os
-import time 
+import time
 import gspread
 import numpy as np
 import pandas as pd
+
+from rich.live import Live
+from rich.text import Text
+from rich.spinner import Spinner
 
 from atlas import Logger
 
@@ -15,7 +19,7 @@ class SheetManager():
 		self.config  = config
 
 		if not self.config['sa_filename']:
-			Logger.log('Resorting to default service account config in ~/.config/service_account.json', 'INFO')
+			Logger.log('Resorting to default service account config in ~/.config/gspread/service_account.json', 'WARNING')
 			self.sa = gspread.service_account()
 		else:
 			if not os.path.exists(self.config['sa_filename']):
@@ -32,10 +36,10 @@ class SheetManager():
 
 
 	def write_sheet(self, df):
-		self.wks.update([df.columns.values.tolist()] + df.values.tolist()) 
+		self.wks.update([df.columns.values.tolist()] + df.values.tolist())
 
 	def df_from_campaign(self, campaign, samples):
-		''' generate a dataframe from the olympus campaign and 
+		''' generate a dataframe from the olympus campaign and
 		unmeasured recommendations
 
 		Args:
@@ -88,20 +92,28 @@ class SheetManager():
 
 	def monitor_sheet(self):
 		''' check if all the TODOs are replaced by floats or ints
-		''' 
+		'''
 		exp_finished = False
-		while not exp_finished:
-			df = self.read_sheet()
-			counts = 0
-			for col in df.columns:
-				#counts += df[col].value_counts()['TODO']
-				counts += len(df[df[col]=='TODO'])
-			if counts == 0:
-				exp_finished = True
-			else:
-				message = f'Waiting on results for {counts} experiments'
-				Logger.log(message, 'INFO')
-				time.sleep(self.config['monitor_interval'])
+		df = self.read_sheet()
+		counts = 0
+		for col in df.columns:
+			#counts += df[col].value_counts()['TODO']
+			counts += len(df[df[col]=='TODO'])
+		with Live(
+			Spinner('dots12', text=f'[INFO] Waiting for {counts} measurements ', style="green")
+		) as live:
+			while not exp_finished:
+				df = self.read_sheet()
+				counts = 0
+				for col in df.columns:
+					#counts += df[col].value_counts()['TODO']
+					counts += len(df[df[col]=='TODO'])
+				if counts == 0:
+					exp_finished = True
+				else:
+					# message = f'Waiting on results for {counts} experiments'
+					# Logger.log(message, 'INFO')
+					time.sleep(self.config['monitor_interval'])
 
 
 
@@ -112,9 +124,9 @@ class SheetManager():
 
 
 '''
-config should contain 
+config should contain
 --> path to service account json file
 --> sheet name
 --> worksheet name
---> 
+-->
 '''

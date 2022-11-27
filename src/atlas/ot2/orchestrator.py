@@ -4,6 +4,7 @@ import os, sys
 import time
 import yaml
 
+
 from olympus.campaigns import Campaign, ParameterSpace
 from olympus.objects import ParameterVector
 
@@ -16,10 +17,11 @@ from atlas.sheets.sheet_manager import SheetManager
 
 
 class Orchestrator:
-	''' High-level orchestrator for drug formulation experiment 
+	''' High-level orchestrator for drug formulation experiment
 	'''
 	def __init__(self, config_file):
 		# load config file
+		Logger.log_welcome()
 		if os.path.isfile(config_file):
 			content = open(f'{config_file}', 'r')
 			self.campaign_config = yaml.full_load(content)
@@ -33,20 +35,22 @@ class Orchestrator:
 		self.BUDGET = self.campaign_config['general']['budget']
 		self.TIMEOUT = self.campaign_config['general']['timeout']
 
-
 		# get Olympus parameter space and value space
-		self.func_param_space, self.full_param_space, self.full_space_instructions = get_param_space(self.campaign_config) 
+		Logger.log_chapter('Initializing parameter space and campaign', line='=', style='bold #d9ed92')
+		self.func_param_space, self.full_param_space, self.full_space_instructions = get_param_space(self.campaign_config)
 		self.value_space = get_value_space(self.campaign_config)
-
 		# set campaign
 		self.set_campaign()
+		Logger.log_config(self.full_campaign, self.campaign_config)
 
-		# set planner 
+
+		Logger.log_chapter('Initializing experiment planner', line='=', style='bold #d9ed92')
+		# set planner
 		self.set_planner()
 
+		Logger.log_chapter('Initializing Google sheet manager', line='=', style='bold #d9ed92')
 		# setup Google sheet manager
 		self.instantiate_sheet_manager()
-
 
 
 	def set_campaign(self):
@@ -59,7 +63,6 @@ class Orchestrator:
 		self.full_campaign = Campaign()
 		self.full_campaign.set_param_space(self.full_param_space)
 		self.full_campaign.set_value_space(self.value_space)
-
 
 	def set_planner(self):
 		# instantiate planner with functional parameter space
@@ -96,7 +99,6 @@ class Orchestrator:
 
 		self.planner.set_param_space(self.func_param_space)
 
-
 	def instantiate_sheet_manager(self):
 		''' Generates instance of Google sheet API manager
 		'''
@@ -113,13 +115,6 @@ class Orchestrator:
 			)
 		return protocol_manager
 
-
-
-	def simulate_protocol(self):
-		''' Simulates the OT2 protocol and checks for errors 
-		'''
-		return None
-
 	def check_ot2_server_connection(self):
 		''' Verify connection to OT2 robot server
 		'''
@@ -128,7 +123,7 @@ class Orchestrator:
 
 	def orchestrate(self):
 		''' Execute the experiment for a given budget of measurements or until a cumulative timeout
-		threshold is achieved 
+		threshold is achieved
 		'''
 		if not self.TIMEOUT:
 			Logger.log(f'Timeout not set. Experiment will proceed indefinitley for {self.BUDGET} measurements', 'WARNING')
@@ -139,28 +134,31 @@ class Orchestrator:
 
 
 		# begin experiment
-
+		Logger.log_chapter('Commencing experiment', line='=', style='bold #d9ed92')
+		num_batches = 0
 		while len(self.func_campaign.observations.get_values()) < self.BUDGET:
+
+			num_obs =  len(self.func_campaign.observations.get_values())
+
+			Logger.log_chapter(
+				f'STARTING BATCH NUMBER {num_batches+1} ({num_obs}/{self.BUDGET} OBSERVATIONS FOUND)',
+				line='-',
+				style='cyan',
+			)
 
 			if self.is_moo:
 				obs_for_planner = self.func_campaign.scalarized_observations
 			else:
 				obs_for_planner = self.func_campaign.observations
 
-			print('\nparams : ', obs_for_planner.get_params())
-			print('\nvalues : ', obs_for_planner.get_values())
-
 			func_batch_params = self.planner.recommend(obs_for_planner)
 
-			print('\nfunc_batch_params : ', func_batch_params)
-
 			# convert the samples to the "full" parameter space
-			full_batch_params = func_to_full_params(func_batch_params, self.full_space_instructions)
+			full_batch_params = func_to_full_params(func_batch_params, self.full_param_space, self.full_space_instructions)
 
-			print('\nfull_batch_params : ', full_batch_params)
-		
 			# write new params to sheet
 			df = self.sheet_manager.df_from_campaign(self.full_campaign, full_batch_params)
+
 			self.sheet_manager.write_sheet(df)
 
 			# convert params to transfer volumes for the OT2
@@ -173,7 +171,6 @@ class Orchestrator:
 			protocol_manager.spawn_protocol_file()
 
 			# TODO: send to OT2
-
 
 			# execute the protocol
 			protocol_manager.execute_protocol(simulation=self.campaign_config['protocol']['simulation'])
@@ -193,35 +190,12 @@ class Orchestrator:
 				self.func_campaign.add_observation(func_sample, measurement)
 				self.full_campaign.add_observation(full_sample, measurement)
 
-		
+			num_batches += 1
 
 
 
 if __name__ == '__main__':
 
-
 	runner = Orchestrator(config_file='campaign_config.yaml')
 
 	runner.orchestrate()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-		
-
-
-
-
-
