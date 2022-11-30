@@ -16,7 +16,5 @@ __datasets__ = os.environ.get("ATLAS_DATASETS") or atlas_datasets
 
 
 from .utils.logger import MessageLogger
+
 Logger = MessageLogger()
-
-
-

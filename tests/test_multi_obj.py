@@ -1,64 +1,66 @@
 #!/usr/bin/env python
 
-import pytest
 import numpy as np
-
-from olympus.objects import (
-	ParameterContinuous,
-	ParameterDiscrete,
-	ParameterCategorical,
-)
+import pytest
 from olympus.campaigns import Campaign, ParameterSpace
-from olympus.surfaces import Surface
+from olympus.objects import (
+    ParameterCategorical,
+    ParameterContinuous,
+    ParameterDiscrete,
+)
 from olympus.scalarizers import Scalarizer
+from olympus.surfaces import Surface
 
 from atlas.optimizers.gp.planner import BoTorchPlanner
 
-
 CONT = {
-	'init_design_strategy': ['random', 'sobol', 'lhs'], # init design strategues
-	'batch_size': [1, 5], # batch size
-	'use_descriptors': [False], # use descriptors
+    "init_design_strategy": [
+        "random",
+        "sobol",
+        "lhs",
+    ],  # init design strategues
+    "batch_size": [1, 5],  # batch size
+    "use_descriptors": [False],  # use descriptors
 }
 
 DISC = {
-	'init_design_strategy': ['random'],
-	'batch_size': [1, 5],
-	'use_descriptors': [False],
+    "init_design_strategy": ["random"],
+    "batch_size": [1, 5],
+    "use_descriptors": [False],
 }
 
 CAT = {
-	'init_design_strategy': ['random'],
-	'batch_size': [1, 5],
-	'use_descriptors': [False, True],
+    "init_design_strategy": ["random"],
+    "batch_size": [1, 5],
+    "use_descriptors": [False, True],
 }
 
 MIXED_CAT_CONT = {
-	'init_design_strategy': ['random'],
-	'batch_size': [1],
-	'use_descriptors': [False, True],
+    "init_design_strategy": ["random"],
+    "batch_size": [1],
+    "use_descriptors": [False, True],
 }
 
 MIXED_DISC_CONT = {
-	'init_design_strategy': ['random'],
-	'batch_size': [1],
-	'use_descriptors': [False],
+    "init_design_strategy": ["random"],
+    "batch_size": [1],
+    "use_descriptors": [False],
 }
 
 
 MIXED_CAT_DISC = {
-	'init_design_strategy': ['random'],
-	'batch_size': [1],
-	'use_descriptors': [False, True],
+    "init_design_strategy": ["random"],
+    "batch_size": [1],
+    "use_descriptors": [False, True],
 }
 
 MIXED_CAT_DISC_CONT = {
-	'init_design_strategy': ['random'],
-	'batch_size': [1],
-	'use_descriptors': [False, True],
+    "init_design_strategy": ["random"],
+    "batch_size": [1],
+    "use_descriptors": [False, True],
 }
 
-SCALARIZER_KINDS = ['WeightedSum', 'Parego', 'Hypervolume', 'Chimera']
+SCALARIZER_KINDS = ["WeightedSum", "Parego", "Hypervolume", "Chimera"]
 
 
 # def generate_scalarizer_object(scalarizer_kind, value_space):
@@ -278,11 +280,11 @@ SCALARIZER_KINDS = ['WeightedSum', 'Parego', 'Hypervolume', 'Chimera']
 # ):
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
-	# test_continuous_weighted_sum()
-	# test_continuous_hypervolume()
-	# test_continuous_chimera()
-	# test_continuous_parego()
+    # test_continuous_weighted_sum()
+    # test_continuous_hypervolume()
+    # test_continuous_chimera()
+    # test_continuous_parego()
 
-	pass
+    pass

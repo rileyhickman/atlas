@@ -56,19 +56,17 @@ class ProtocolLoader:
     def import_protocol(attr):
         attr_file = ProtocolLoader.class_to_file(attr)
         module = __import__(
-            f"atlas.ot2.example_protocols.protocol_{attr_file}", fromlist=[attr]
+            f"atlas.ot2.example_protocols.protocol_{attr_file}",
+            fromlist=[attr],
         )
         _class = getattr(module, attr)
         return _class
-
 
     def _find_protocols(self):
         self.protocol_files = []
         self.protocol_names = []
         self.protocols_map = {}
         for dir_name in glob.glob(f"{__home__}/protocol_*"):
-
-
 
             if "/" in dir_name:
                 protocol_name = dir_name.split("/")[-1][9:]
@@ -82,7 +80,6 @@ class ProtocolLoader:
 
     def get_protocols_list(self):
         return sorted(self.protocol_names)
-
 
 
 sys.modules[__name__] = ProtocolLoader(**locals())
