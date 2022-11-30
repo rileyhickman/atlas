@@ -23,7 +23,7 @@ jobs:
       - checkout
       - python/install-packages:
         pkg-manager: pip
-        # pip-dependency-file: requirements.txt
+        pip-dependency-file: requirements.txt
       - run:
           name: run-tests
           command: pytest
