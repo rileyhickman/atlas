@@ -7,27 +7,31 @@ orbs:
   # Orb commands and jobs help you with common scripting around a language/tool
   # so you dont have to copy and paste it everywhere.
   # See the orb documentation here: https://circleci.com/developer/orbs/orb/circleci/python
-  python: circleci/python@2.0.3
+  codecov: codecov/codecov@3.2.2
 
 # Define a job to be invoked later in a workflow.
 # See: https://circleci.com/docs/2.0/configuration-reference/#jobs
 jobs:
   build-and-test:
-    executor: python/default
+    # executor: python/default
+    docker:
+      - image: cimg/python:3.8.15
     # Add steps to the job
     # See: https://circleci.com/docs/2.0/configuration-reference/#steps
     steps:
       - checkout
-      - python/install-packages:
-        pkg-manager: pip
-        # pip-dependency-file: requirements.txt
       - run:
-          name: run-tests
-          command: pytest
+        name: install-requirements
+        command: pip install -r requirements.txt
+      - run:
+          name: run-tests-cov
+          command: pytest --cov=src/
+      - codecov/upload
 
 # Invoke jobs via workflows
 # See: https://circleci.com/docs/2.0/configuration-reference/#workflows
 workflows:
+  version: 2.1
   build-and-test-workflow:
     jobs:
       - build-and-test
