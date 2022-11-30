@@ -15,3 +15,4 @@ silence-tensorflow
 deap
 rich
 pytest
+git+https://github.com/aspuru-guzik-group/olympus.git@dev
