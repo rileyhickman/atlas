@@ -16,9 +16,9 @@ jobs:
       - checkout
       - python/install-packages:
         pkg-manager: pip
-        pip-dependency-file: requirements.txt
+        # pip-dependency-file: requirements.txt
       - run:
-          name: "run_tests"
+          name: run-tests
           command: pytest
 
 # Invoke jobs via workflows
