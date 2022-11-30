@@ -1,6 +1,8 @@
 # atlas
 Bayesian optimization for chemistry
 
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 
 ![alt text](https://github.com/rileyhickman/atlas/blob/main/static/atlas_logo.png)
 
