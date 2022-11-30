@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import os, sys
 import time
 import yaml
@@ -19,7 +21,7 @@ from atlas.sheets.sheet_manager import SheetManager
 class Orchestrator:
 	''' High-level orchestrator for drug formulation experiment
 	'''
-	def __init__(self, config_file):
+	def __init__(self, config_file:str):
 		# load config file
 		Logger.log_welcome()
 		if os.path.isfile(config_file):
@@ -77,6 +79,8 @@ class Orchestrator:
 				batch_size=self.BATCH_SIZE,
 				init_design_strategy='random',
 				num_init_design=self.BATCH_SIZE,
+				feas_strategy='fca',
+				feas_param=0.2,
 				is_moo=True,
 				value_space=self.func_campaign.value_space,
 				scalarizer_kind='Hypervolume',
@@ -105,7 +109,7 @@ class Orchestrator:
 		sheet_config = self.campaign_config['sheets']
 		self.sheet_manager = SheetManager(config=sheet_config)
 
-	def instantiate_protocol_manager(self, parameters):
+	def instantiate_protocol_manager(self, parameters: Dict[str, np.ndarray]) -> ProtocolManager:
 		''' Generates protocol manager instance
 		'''
 		protocol_config = self.campaign_config['protocol']
@@ -119,6 +123,20 @@ class Orchestrator:
 		''' Verify connection to OT2 robot server
 		'''
 		return None
+
+
+	# def copy_to_ot2(self):
+	# 	''' Copy the file to the OT2
+	# 	'''
+	# 	# TODO: implement this
+	# 	# https://support.opentrons.com/s/article/Connecting-to-your-OT-2-with-SSH#:~:text=In%20the%20Opentrons%20App%2C%20find,be%20made%20over%20Wi%2DFi.
+	# 	# https://support.opentrons.com/s/article/Setting-up-SSH-access-to-your-OT-2
+
+	# 	filename = f'__OT2_file_{self.protocol_name}.py'
+
+	# 	# scp the file to the open
+
+	# 	return None
 
 
 	def orchestrate(self):
@@ -137,6 +155,11 @@ class Orchestrator:
 		Logger.log_chapter('Commencing experiment', line='=', style='bold #d9ed92')
 		num_batches = 0
 		while len(self.func_campaign.observations.get_values()) < self.BUDGET:
+
+			# print('CAMPAIGN OBS : ', self.full_campaign.observations.get_params())
+			vals = self.full_campaign.observations.get_values()			
+			print([np.isnan(v[0]) for v in vals])
+			print('CAMPAIGN OBS : ', self.full_campaign.observations.get_values())
 
 			num_obs =  len(self.func_campaign.observations.get_values())
 

@@ -36,7 +36,6 @@ preparation:
       - "dmg-peg_2000"
     levels: null
   dmg-peg_2000:
-    #name: "dmg-peg_2000"
     type: "lipid"
     mol_wt: 2509.2
     target_conc: 4.0
@@ -51,15 +50,11 @@ preparation:
       - 0.03
       - 0.05
   ethanol:
-    #name: "ethanol"
     type: "solvent"
 processing_params:
-  # organic phase per stock solution (uL)
-  org_phase_per_stock: 800
-  # organic phase per well (uL)
-  org_phase_per_well: 50
-  # total lipid concentration (umol/well)
-  total_lipid_conc: 0.2
+  org_phase_per_stock: 800  # organic phase per stock solution (uL)
+  org_phase_per_well: 50  # organic phase per well (uL)
+  total_lipid_conc: 0.2   # total lipid concentration (umol/well)
 objectives:
   obj1:
     name: "encapsulation_efficiency"
@@ -67,15 +62,14 @@ objectives:
     type: "continuous"
 general:
   batch_size: 2
-  # number of decimal places after uL
-  volume_prec: 0
-  budget: 10 # maximum allowed measurements
+  volume_prec: 0  # number of decimal places after uL
+  budget: 10  # maximum allowed measurements
   timeout: 3600 # total allowed time for experiment (seconds)
 sheets:
   sa_filename: null
   sheet_name: "test_atlas"  # name of google sheet
   worksheet_name: "Sheet1"  # name of worksheet
-  monitor_interval: 5 # sheet monitor interval in seconds
+  monitor_interval: 5  # sheet monitor interval in seconds
 protocol:
   name: "dummy"
   parameter_map:
@@ -85,6 +79,8 @@ protocol:
     dmg-peg-2000: "peglipid"
     ethanol: "ethanol"
   custom_labware_path: "/path/to/file"
-  simulation: True # wheter or not to simulate the opentrons protocol
+  simulation: True  # wheter or not to simulate the opentrons protocol
   ot2_name: null  # ot2 name
-  ot2_server: null  # ot2 server address
+  ot2_connection: "wireless"  # ot2 connection type: "wired" or "wireless"
+  ot2_wired_ip: "169.254.121.85"  # ot2 wired (usb) address
+  ot2_wireless_ip: "192.168.0.168" # ot2 wireless address

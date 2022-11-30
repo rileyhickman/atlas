@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import os, sys
 import time
@@ -23,6 +24,7 @@ from olympus.planners import CustomPlanner, AbstractPlanner
 from olympus import ParameterVector
 from olympus.scalarizers import Scalarizer
 from olympus.planners import Planner
+from olympus.campaigns import ParameterSpace
 
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
@@ -83,43 +85,38 @@ class BoTorchPlanner(BasePlanner):
 
 	def __init__(
 		self,
-		goal='minimize',
-		feas_strategy='naive-0',
-		feas_param=0.2,
-		batch_size=1,
-		random_seed=None,
-		use_descriptors=False,
-		num_init_design=5,
-		init_design_strategy='random',
-		acquisition_optimizer_kind='gradient', # gradient, genetic
-		vgp_iters=1000,
-		vgp_lr=0.1,
-		max_jitter=1e-1,
-		cla_threshold=0.5,
-		known_constraints=None,
-		general_parmeters=None,
-		is_moo=False,
-		value_space=None,
-		scalarizer_kind='Hypervolume',
-		moo_params={},
-		goals=None,
-		**kwargs,
+		goal: str,
+		feas_strategy:Optional[str]='naive-0',
+		feas_param:Optional[str]=0.2,
+		batch_size:int=1,
+		random_seed:Optional[int]=None,
+		use_descriptors:bool=False,
+		num_init_design:int=5,
+		init_design_strategy:str='random',
+		acquisition_optimizer_kind:str='gradient', # gradient, genetic
+		vgp_iters:int=2000,
+		vgp_lr:float=0.1,
+		max_jitter:float=1e-1,
+		cla_threshold:float=0.5,
+		known_constraints:Optional[List[Callable]]=None,
+		is_moo:bool=False,
+		value_space:Optional[ParameterSpace]=None,
+		scalarizer_kind:Optional[str]='Hypervolume',
+		moo_params:Dict[str, Union[str, float, int, bool, List]]={},
+		goals:Optional[List[str]]=None,
+		**kwargs: Any,
 	):
 		local_args = {key:val for key, val in locals().items() if key != 'self'}
 		super().__init__(**local_args)
 
 
-	def build_train_regression_gp(self, train_x, train_y):
+	def build_train_regression_gp(self, train_x:torch.Tensor, train_y:torch.Tensor) -> gpytorch.models.ExactGP:
 		''' Build the regression GP model and likelihood
 
 		'''
 		# infer the model based on the parameter types
 		if self.problem_type in ['fully_continuous','fully_discrete']:
 			model = SingleTaskGP(train_x, train_y)
-		elif self.problem_type in ['mixed']:
-			# TODO: implement a method to retrieve the categorical dimensions
-			cat_dims = get_cat_dims(self.param_space)
-			model = MixedSingleTaskGP(train_x, train_y, cat_dims=cat_dims)
 		elif self.problem_type == 'fully_categorical':
 			if self.has_descriptors:
 				# we have some descriptors, use the Matern kernel
@@ -128,7 +125,7 @@ class BoTorchPlanner(BasePlanner):
 				# if we have no descriptors, use a Categorical kernel
 				# based on the HammingDistance
 				model = CategoricalSingleTaskGP(train_x, train_y)
-		elif self.problem_type == 'mixed_dis_cat':
+		elif 'mixed_' in self.problem_type:
 			if self.has_descriptors:
 				# we have some descriptors, use the Matern kernel
 				model = SingleTaskGP(train_x, train_y)
@@ -145,12 +142,12 @@ class BoTorchPlanner(BasePlanner):
 		with gpytorch.settings.cholesky_jitter(self.max_jitter):
 			fit_gpytorch_model(mll)
 		gp_train_time = time.time() - start_time
-		print(f' >>> [? epochs] GP trained in {round(gp_train_time,3)} sec ')
+		Logger.log(f'Regression surrogate GP trained in {round(gp_train_time,3)} sec', 'INFO')
 
 		return model
 
 
-	def _ask(self):
+	def _ask(self) -> List[ParameterVector]:
 		''' query the planner for a batch of new parameter points to measure
 		'''
 		# if we have all nan values, just keep randomly sampling
@@ -277,9 +274,6 @@ class BoTorchPlanner(BasePlanner):
 			bounds = get_bounds(self.param_space, self._mins_x, self._maxs_x, self.has_descriptors)
 
 
-
-			print('PROBLEM TYPE : ', self.problem_type)
-
 			#-------------------------------
 			# optimize acquisition function
 			#-------------------------------
@@ -304,7 +298,12 @@ class BoTorchPlanner(BasePlanner):
 		return return_params
 
 
-	def get_aqcf_min_max(self, reg_model, f_best_scaled, num_samples=2000):
+	def get_aqcf_min_max(
+			self, 
+			reg_model: gpytorch.models.ExactGP, 
+			f_best_scaled:torch.Tensor, 
+			num_samples:int=2000,
+		) -> Tuple[int, int]:
 		''' computes the min and max value of the acquisition function without
 		the feasibility contribution. These values will be used to approximately
 		normalize the acquisition function

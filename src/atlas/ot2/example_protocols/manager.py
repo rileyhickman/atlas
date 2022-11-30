@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import os, sys
 import subprocess
 import json
@@ -10,9 +12,10 @@ from opentrons import protocol_api
 
 from atlas import Logger
 from atlas.ot2.example_protocols import get_protocols_list, ProtocolLoader
+from atlas.ot2.example_protocols.abstract_protocol import AbstractProtocol
 
 class ProtocolManager:
-	def __init__(self, protocol_name:str, protocol_parameters:dict):
+	def __init__(self, protocol_name:str, protocol_parameters: Dict[str, np.ndarray]):
 		self.protocol_name = protocol_name
 
 		# make sure all values in protocol parametrs dictionary are lists (json serializable)
@@ -34,7 +37,7 @@ class ProtocolManager:
 			}
 
 
-	def load_protocol(self, protocol_name:str):
+	def load_protocol(self, protocol_name:str) -> AbstractProtocol:
 		protocol_name_class = ProtocolLoader.file_to_class(protocol_name)
 		protocols_list_class = get_protocols_list()
 		if not protocol_name_class in protocols_list_class:
@@ -66,15 +69,20 @@ class ProtocolManager:
 			f.write(s)
 
 
-	def copy_to_ot2(self):
-		''' Copy the file to the OT2
-		'''
-		# TODO: implement this
-		# https://support.opentrons.com/s/article/Connecting-to-your-OT-2-with-SSH#:~:text=In%20the%20Opentrons%20App%2C%20find,be%20made%20over%20Wi%2DFi.
-		# https://support.opentrons.com/s/article/Setting-up-SSH-access-to-your-OT-2
-		return None
+	# def copy_to_ot2(self):
+	# 	''' Copy the file to the OT2
+	# 	'''
+	# 	# TODO: implement this
+	# 	# https://support.opentrons.com/s/article/Connecting-to-your-OT-2-with-SSH#:~:text=In%20the%20Opentrons%20App%2C%20find,be%20made%20over%20Wi%2DFi.
+	# 	# https://support.opentrons.com/s/article/Setting-up-SSH-access-to-your-OT-2
 
-	def execute_protocol(self, simulation=False):
+	# 	filename = f'__OT2_file_{self.protocol_name}.py'
+
+	# 	# scp the file to the open
+
+	# 	return None
+
+	def execute_protocol(self, simulation:Optional[bool]=False):
 		''' Run the protocol on the OT2 server
 		'''
 		# https://docs.opentrons.com/v2/new_advanced_running.html

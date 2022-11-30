@@ -127,7 +127,6 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
 			raise NotImplementedError
 
 
-
 class FeasibilityAwareQEI(qExpectedImprovement):
 	''' Abstract feasibility aware expected improvement acquisition function. Compatible
 	with the FIA, FCA and FWA strategies, as well as any of the naive strategies.
@@ -207,7 +206,6 @@ class FeasibilityAwareQEI(qExpectedImprovement):
 				return acqf
 		else:
 			raise NotImplementedError
-
 
 
 class FeasibilityAwareEI(ExpectedImprovement):
@@ -304,7 +302,7 @@ def get_batch_initial_conditions(
 	has_descriptors,
 	num_chances=15,
 
-):
+	):
 	''' generate batches of initial conditions for a
 	random restart optimization subject to some constraints. This uses
 	rejection sampling, and might get very inefficient for parameter spaces with
@@ -401,10 +399,22 @@ def sample_around_x(raw_samples, constraint_callable):
 
 
 
-def create_available_options(param_space, params, constraint_callable, normalize, mins_x, maxs_x, has_descriptors):
+def create_available_options(
+		param_space, 
+		params, 
+		constraint_callable, 
+		normalize, 
+		mins_x, 
+		maxs_x, 
+		has_descriptors,
+	):
 	''' build cartesian product space of options, then remove options
 	which have already been measured. Returns an (num_options, num_dims)
 	torch tensor with all possible options
+
+	If the parameter space is mixed, build and return the Cartesian product space of 
+	only the categorical and discrete parameters. 
+
 	Args:
 		param_space (obj): Olympus parameter space object
 		params (list): parameters from the current Campaign
@@ -424,21 +434,77 @@ def create_available_options(param_space, params, constraint_callable, normalize
 		real_params.append(p)
 
 	# params = [list(elem) for elem in params]
-
-	param_names = [p.name for p in param_space]
-	param_options = [p.options for p in param_space]
-
+	# get the relevant parmeters -> only categorical and discrete
+	relevant_params = [p for p in param_space if p.type in ['categorical', 'discrete']]
+	param_names = [p.name for p in relevant_params]
+	param_options = [p.options for p in relevant_params]
 
 	cart_product = list(itertools.product(*param_options))
-
 	cart_product = [list(elem) for elem in cart_product]
 
-	# remove options that we have measured already
-	current_avail_feat  = []
-	current_avail_cat = []
+	if len(param_names)==len(param_space): 
+		# no continuous parameters
+		# remove options that we have measured already
+		current_avail_feat  = []
+		current_avail_cat = []
 
-	for elem in cart_product:
-		if elem not in real_params:
+		for elem in cart_product:
+			if elem not in real_params:
+				# convert to ohe and add to currently available options
+				ohe = []
+				for val, obj in zip(elem, param_space):
+					if obj.type=='categorical':
+						ohe.append(cat_param_to_feat(obj, val, has_descriptors))
+					else:
+						ohe.append([val])
+				current_avail_feat.append(np.concatenate(ohe))
+				current_avail_cat.append(elem)
+
+		current_avail_feat_unconst = np.array(current_avail_feat)
+		current_avail_cat_unconst  =  np.array(current_avail_cat)
+
+		# forward normalize the options before evaluating the c
+		if normalize:
+			current_avail_feat_unconst = forward_normalize(current_avail_feat_unconst, mins_x, maxs_x)
+
+		current_avail_feat_unconst = torch.tensor(current_avail_feat_unconst)
+
+		# remove options which are infeasible given the feasibility surrogate model
+		# and the threshold
+		if constraint_callable is not None:
+			# FCA approach, apply feasibility constraint
+			constraint_input = current_avail_feat_unconst.view(current_avail_feat_unconst.shape[0], 1, current_avail_feat_unconst.shape[1])
+			constraint_vals = constraint_callable(constraint_input)
+			print('constraint_vals : ', constraint_vals)
+			print('constraint_vals max : ', torch.amax(constraint_vals))
+			print('constraint_vals min : ', torch.amin(constraint_vals))
+
+			feas_mask = torch.where( constraint_vals >= 0.)[0]
+			print(f'{feas_mask.shape[0]}/{current_avail_feat_unconst.shape[0]} options are feasible')
+			if feas_mask.shape[0] == 0:
+				msg = 'No feasible samples after FCA constraint, resorting back to full space'
+				Logger.log(msg, 'WARNING')
+				# if we have zero feasible samples
+				# resort back to the full set of unobserved options
+				current_avail_feat = current_avail_feat_unconst
+				current_avail_cat = current_avail_cat_unconst
+			else:
+				current_avail_feat = current_avail_feat_unconst[feas_mask]
+				current_avail_cat = current_avail_cat_unconst[feas_mask.detach().numpy()]
+
+
+		else:
+			current_avail_feat = current_avail_feat_unconst
+			current_avail_cat  = current_avail_cat_unconst
+
+		return current_avail_feat, current_avail_cat
+
+	else: 
+		# at least one continuous parameter, no need to remove any options
+		current_avail_feat  = []
+		current_avail_cat = []
+
+		for elem in cart_product:
 			# convert to ohe and add to currently available options
 			ohe = []
 			for val, obj in zip(elem, param_space):
@@ -449,42 +515,18 @@ def create_available_options(param_space, params, constraint_callable, normalize
 			current_avail_feat.append(np.concatenate(ohe))
 			current_avail_cat.append(elem)
 
-	current_avail_feat_unconst = np.array(current_avail_feat)
-	current_avail_cat_unconst  =  np.array(current_avail_cat)
+		current_avail_feat_unconst = np.array(current_avail_feat)
+		current_avail_cat_unconst  =  np.array(current_avail_cat)
 
-	# forward normalize the options before evaluating the c
-	if normalize:
-		current_avail_feat_unconst = forward_normalize(current_avail_feat_unconst, mins_x, maxs_x)
+		# forward normalize the options before evaluating the c
+		if normalize:
+			current_avail_feat_unconst = forward_normalize(current_avail_feat_unconst, mins_x, maxs_x)
 
-	current_avail_feat_unconst = torch.tensor(current_avail_feat_unconst)
+		current_avail_feat_unconst = torch.tensor(current_avail_feat_unconst)
 
-
-	# remove options which are infeasible given the feasibility surrogate model
-	# and the threshold
-	if constraint_callable is not None:
-		# FCA approach, apply feasibility constraint
-		constraint_input = current_avail_feat_unconst.view(current_avail_feat_unconst.shape[0], 1, current_avail_feat_unconst.shape[1])
-		constraint_vals = constraint_callable(constraint_input)
-		print('constraint_vals : ', constraint_vals)
-		print('constraint_vals max : ', torch.amax(constraint_vals))
-		print('constraint_vals min : ', torch.amin(constraint_vals))
-
-		feas_mask = torch.where( constraint_vals >= 0.)[0]
-		print(f'{feas_mask.shape[0]}/{current_avail_feat_unconst.shape[0]} options are feasible')
-		if feas_mask.shape[0] == 0:
-			msg = 'No feasible samples after FCA constraint, resorting back to full space'
-			Logger.log(msg, 'WARNING')
-			# if we have zero feasible samples
-			# resort back to the full set of unobserved options
-			current_avail_feat = current_avail_feat_unconst
-			current_avail_cat = current_avail_cat_unconst
-		else:
-			current_avail_feat = current_avail_feat_unconst[feas_mask]
-			current_avail_cat = current_avail_cat_unconst[feas_mask.detach().numpy()]
+		# TODO: may need to add the constraint checking here too...
+		return current_avail_feat_unconst, current_avail_cat_unconst
 
 
-	else:
-		current_avail_feat = current_avail_feat_unconst
-		current_avail_cat  = current_avail_cat_unconst
 
-	return current_avail_feat, current_avail_cat
+	

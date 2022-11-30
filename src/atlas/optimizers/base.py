@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import os, sys
 import time
 import pickle
 from copy import deepcopy
+from rich.progress import track
 import numpy as np
-
 
 import torch
 import gpytorch
@@ -22,6 +24,7 @@ from olympus.planners import CustomPlanner, AbstractPlanner
 from olympus import ParameterVector
 from olympus.scalarizers import Scalarizer
 from olympus.planners import Planner
+from olympus.campaigns import ParameterSpace
 
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
@@ -59,27 +62,26 @@ class BasePlanner(CustomPlanner):
 
 	def __init__(
 		self,
-		goal='minimize',
-		feas_strategy='naive-0',
-		feas_param=0.2,
-		batch_size=1,
-		random_seed=None,
-		use_descriptors=False,
-		num_init_design=5,
-		init_design_strategy='random',
-		acquisition_optimizer_kind='gradient', # gradient, genetic
-		vgp_iters=2000,
-		vgp_lr=0.1,
-		max_jitter=1e-1,
-		cla_threshold=0.5,
-		known_constraints=None,
-		general_parmeters=None,
-		is_moo=False,
-		value_space=None,
-		scalarizer_kind='Hypervolume',
-		moo_params={},
-		goals=None,
-		**kwargs,
+		goal: str,
+		feas_strategy:Optional[str]='naive-0',
+		feas_param:Optional[str]=0.2,
+		batch_size:int=1,
+		random_seed:Optional[int]=None,
+		use_descriptors:bool=False,
+		num_init_design:int=5,
+		init_design_strategy:str='random',
+		acquisition_optimizer_kind:str='gradient', # gradient, genetic
+		vgp_iters:int=2000,
+		vgp_lr:float=0.1,
+		max_jitter:float=1e-1,
+		cla_threshold:float=0.5,
+		known_constraints:Optional[List[Callable]]=None,
+		is_moo:bool=False,
+		value_space:Optional[ParameterSpace]=None,
+		scalarizer_kind:Optional[str]='Hypervolume',
+		moo_params:Dict[str, Union[str, float, int, bool, List]]={},
+		goals:Optional[List[str]]=None,
+		**kwargs: Any,
 	):
 		AbstractPlanner.__init__(**locals())
 		self.goal = goal
@@ -100,7 +102,6 @@ class BasePlanner(CustomPlanner):
 		self.max_jitter = max_jitter
 		self.cla_threshold = cla_threshold
 		self.known_constraints = known_constraints
-		self.general_parmeters = general_parmeters
 		self.is_moo = is_moo
 		self.value_space = value_space
 		self.scalarizer_kind = scalarizer_kind
@@ -137,7 +138,7 @@ class BasePlanner(CustomPlanner):
 		self.num_init_design_completed = 0
 
 
-	def _set_param_space(self, param_space):
+	def _set_param_space(self, param_space:ParameterSpace):
 		''' set the Olympus parameter space (not actually really needed)
 		'''
 
@@ -177,7 +178,11 @@ class BasePlanner(CustomPlanner):
 
 
 
-	def build_train_classification_gp(self, train_x, train_y):
+	def build_train_classification_gp(
+			self, 
+			train_x:torch.Tensor, 
+			train_y:torch.Tensor
+		) -> Tuple[gpytorch.models.ApproximateGP, gpytorch.likelihoods.BernoulliLikelihood]:
 		''' build the GP classification model and likelihood
 		and train the model
 		'''
@@ -188,7 +193,13 @@ class BasePlanner(CustomPlanner):
 
 		return model, likelihood
 
-	def train_vgp(self, model, likelihood, train_x, train_y):
+	def train_vgp(
+			self, 
+			model:gpytorch.models.ApproximateGP, 
+			likelihood:gpytorch.likelihoods.BernoulliLikelihood, 
+			train_x:torch.Tensor, 
+			train_y:torch.Tensor
+		) -> Tuple[gpytorch.models.ApproximateGP, gpytorch.likelihoods.BernoulliLikelihood]:
 
 		model.train()
 		likelihood.train()
@@ -201,20 +212,20 @@ class BasePlanner(CustomPlanner):
 		# NOTE: we could also do some sort of cross-validation here for early stopping
 		start_time = time.time()
 		with gpytorch.settings.cholesky_jitter(self.max_jitter):
-			for iter_ in range(self.vgp_iters):
+			for iter_ in track(range(self.vgp_iters), description='Training variational GP...'):
 				optimizer.zero_grad()
 				output = model(train_x)
 				loss = -mll(output, train_y)
 				loss.backward()
 				optimizer.step()
 		vgp_train_time = time.time() - start_time
-		msg = f' >>> [{self.vgp_iters} epochs] VGP trained in {round(vgp_train_time,3)} sec \t Loss : {round(loss.item(), 3)} '
+		msg = f' Classification surrogate VGP trained in {round(vgp_train_time,3)} sec ({self.vgp_iters} epochs)\t Loss : {round(loss.item(), 3)} '
 		Logger.log(msg, 'INFO')
 
 		return model, likelihood
 
 
-	def build_train_data(self):
+	def build_train_data(self) -> Tuple[torch.Tensor, torch.tensor]:
 		''' build the training dataset at each iteration
 		'''
 		if self.is_moo:
@@ -238,11 +249,14 @@ class BasePlanner(CustomPlanner):
 			values_cla = np.where(~np.isnan(self._values), 0., self._values)
 			train_y_cla = np.where(np.isnan(values_cla), 1., values_cla)
 
+
+
 			# generate the regression dataset
 			params_reg = self._params[feas_ix].reshape(-1, 1)
 			train_y_reg = self._values[feas_ix].reshape(-1, 1)
 
-
+		print(train_y_cla)
+		print(train_y_reg)
 
 		train_x_cla, train_x_reg = [], []
 
@@ -260,7 +274,6 @@ class BasePlanner(CustomPlanner):
 				train_x_reg.append(sample_x)
 
 		train_x_cla, train_x_reg = np.array(train_x_cla), np.array(train_x_reg)
-
 
 
 		# scale the training data - normalize inputs and standardize outputs
@@ -289,7 +302,11 @@ class BasePlanner(CustomPlanner):
 		)
 
 
-	def reg_surrogate(self, X, return_np=False):
+	def reg_surrogate(
+			self, 
+			X: torch.Tensor, 
+			return_np:bool=False,
+		) -> Tuple[Union[torch.Tensor, np.ndarray],Union[torch.Tensor, np.ndarray]]:
 		''' make prediction using regression surrogate model
 
 		Args:
@@ -336,7 +353,13 @@ class BasePlanner(CustomPlanner):
 		return pred_mu, pred_sigma
 
 
-	def cla_surrogate(self, X, return_np=False, normalize=True):
+
+	def cla_surrogate(
+			self, 
+			X:torch.Tensor, 
+			return_np:bool=False, 
+			normalize:bool=True,
+		) -> Union[torch.Tensor, np.ndarray]:
 
 		if not hasattr(self, 'cla_model'):
 			msg = 'Optimizer does not yet have classification surrogate model'
@@ -378,7 +401,12 @@ class BasePlanner(CustomPlanner):
 		return mean
 
 
-	def acquisition_function(self, X, return_np, normalize=True):
+	def acquisition_function(
+			self,
+			X:torch.Tensor, 
+			return_np:bool=True, 
+			normalize:bool=True,
+		) -> Union[torch.Tensor, np.ndarray]:
 
 		X_proc = []
 		# adapt the data from olympus form to torch tensors
@@ -419,7 +447,7 @@ class BasePlanner(CustomPlanner):
 		return acqf_vals
 
 
-	def _tell(self, observations):
+	def _tell(self, observations:olympus.campaigns.observations.Observations):
 		''' unpack the current observations from Olympus
 		Args:
 			observations (obj): Olympus campaign observations object
@@ -433,7 +461,7 @@ class BasePlanner(CustomPlanner):
 			self._values = np.array(self._values).reshape(-1, 1)
 
 
-	def fca_constraint(self, X):
+	def fca_constraint(self, X:torch.Tensor) -> torch.Tensor:
 		''' Each callable is expected to take a `(num_restarts) x q x d`-dim tensor as an
 			input and return a `(num_restarts) x q`-dim tensor with the constraint
 			values. The constraints will later be passed to SLSQP. You need to pass in

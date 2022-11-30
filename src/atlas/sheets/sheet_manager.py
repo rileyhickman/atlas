@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import os
 import time
 import gspread
@@ -10,12 +12,16 @@ from rich.live import Live
 from rich.text import Text
 from rich.spinner import Spinner
 
+from olympus.campaigns import Campaign
+from olympus.objects import ParameterVector
+
 from atlas import Logger
+
 
 
 class SheetManager():
 
-	def __init__(self, config):
+	def __init__(self, config: Dict[str, Any]):
 		self.config  = config
 
 		if not self.config['sa_filename']:
@@ -35,10 +41,11 @@ class SheetManager():
 		return pd.DataFrame(self.wks.get_all_records())
 
 
-	def write_sheet(self, df):
+	def write_sheet(self, df: pd.DataFrame):
+		df = df.fillna('NaN') # stringify Nans
 		self.wks.update([df.columns.values.tolist()] + df.values.tolist())
 
-	def df_from_campaign(self, campaign, samples):
+	def df_from_campaign(self, campaign: Campaign, samples: List[ParameterVector]) -> pd.DataFrame:
 		''' generate a dataframe from the olympus campaign and
 		unmeasured recommendations
 
@@ -69,8 +76,6 @@ class SheetManager():
 
 		data_df = pd.DataFrame(data_dict)
 
-		# print(data_df.shape)
-		# print(data_df.head())
 
 		# add the unmeasured recommendations lastly - use TODO
 		# for the objective values
@@ -83,9 +88,6 @@ class SheetManager():
 
 		samples_df = pd.DataFrame(samples_dict)
 
-
-		# print(samples_df.shape)
-		# print(samples_df.head())
 
 		return pd.concat((data_df, samples_df), ignore_index=True)
 

@@ -1,12 +1,22 @@
 #!/usr/bin/env python
 
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import numpy as np
 import torch
 import itertools
 
+from olympus.objects import (
+	ParameterContinuous,
+	ParameterDiscrete,
+	ParameterCategorical,
+	ParameterVector
+)
+from olympus.campaigns import ParameterSpace
 
 
-def infer_problem_type(param_space):
+
+def infer_problem_type(param_space:ParameterSpace) -> str:
 	''' infer the parameter space from Olympus. The three possibilities are
 	"fully_continuous", "mixed" or "fully_categorical"
 	Args:
@@ -24,17 +34,30 @@ def infer_problem_type(param_space):
 		'categorical' in param_types,
 		'discrete' not in param_types,
 		]):
-		problem_type = 'mixed'
+		problem_type = 'mixed_cat_cont'
 	elif all([
 		'continuous' not in param_types,
 		'categorical' in param_types,
 		'discrete' in param_types,
 		]):
-		problem_type = 'mixed_dis_cat'
+		problem_type = 'mixed_cat_disc'
+	elif all([
+		'continuous' in param_types,
+		'categorical' not in param_types,
+		'discrete' in param_types,
+		]):
+		problem_type = 'mixed_disc_cont'
+	elif all([
+		'continuous' in param_types,
+		'categorical' in param_types,
+		'discrete' in param_types,
+		]):
+		problem_type = 'mixed_cat_disc_cont'
+
 	return problem_type
 
 
-def get_cat_dims(param_space):
+def get_cat_dims(param_space:ParameterSpace) -> List[int]:
 	dim = 0
 	cat_dims = []
 	for p in param_space:
@@ -47,13 +70,13 @@ def get_cat_dims(param_space):
 
 	return cat_dims
 
-def get_fixed_features_list(param_space, has_descriptors):
+def get_fixed_features_list(param_space:ParameterSpace, has_descriptors:bool):
 	dim = 0
 	fixed_features_list = []
 	cat_dims = []
 	cat_params = []
 	for p in param_space:
-		if p.type == 'categorical':
+		if p.type in ['categorical', 'discrete']:
 			dims = np.arange(dim, dim+len(p.options))
 			cat_dims.extend(dims)
 			cat_params.append(p)
@@ -63,6 +86,10 @@ def get_fixed_features_list(param_space, has_descriptors):
 	param_options = [p.options for p in cat_params]
 	cart_product = list(itertools.product(*param_options))
 	cart_product = [list(elem) for elem in cart_product]
+
+	# print(cart_product)
+	# print(len(cart_product))
+	# quit()
 
 	current_avail_feat  = []
 	current_avail_cat = []
@@ -75,6 +102,10 @@ def get_fixed_features_list(param_space, has_descriptors):
 		current_avail_feat.append(np.concatenate(ohe))
 		current_avail_cat.append(elem)
 
+	print(current_avail_feat)
+	print(current_avail_feat.shape)
+	quit()
+
 	# make list
 	for feat in current_avail_feat:
 		fixed_features_list.append(
@@ -86,8 +117,11 @@ def get_fixed_features_list(param_space, has_descriptors):
 
 
 
-
-def cat_param_to_feat(param, val, has_descriptors):
+def cat_param_to_feat(
+		param: Union[ParameterContinuous,ParameterDiscrete,ParameterCategorical],
+		val:str,
+		has_descriptors:bool,
+	) -> Union[List, np.ndarray]:
 	''' convert the option selection of a categorical variable (usually encoded
 	as a string) to a machine readable feature vector
 	Args:
@@ -107,7 +141,11 @@ def cat_param_to_feat(param, val, has_descriptors):
 	return feat
 
 
-def propose_randomly(num_proposals, param_space, has_descriptors):
+def propose_randomly(
+		num_proposals:int, 
+		param_space:ParameterSpace, 
+		has_descriptors:bool,
+	) -> Tuple[np.ndarray, np.ndarray]:
 	''' Randomly generate num_proposals proposals. Returns the numerical
 	representation of the proposals as well as the string based representation
 	for the categorical variables
@@ -145,17 +183,29 @@ def propose_randomly(num_proposals, param_space, has_descriptors):
 
 
 
-def forward_standardize(data, means, stds):
+def forward_standardize(
+		data:Union[torch.Tensor, np.ndarray],
+ 		means:Union[torch.Tensor, np.ndarray],
+ 		stds:Union[torch.Tensor, np.ndarray],
+ 	) -> Union[torch.Tensor, np.ndarray]:
 	''' forward standardize the data
 	'''
 	return (data - means) / stds
 
-def reverse_standardize(data, means, stds):
+def reverse_standardize(
+		data:Union[torch.Tensor, np.ndarray],
+ 		means:Union[torch.Tensor, np.ndarray],
+ 		stds:Union[torch.Tensor, np.ndarray],
+ 	) -> Union[torch.Tensor, np.ndarray]:
 	''' un-standardize the data
 	'''
 	return (data*stds) + means
 
-def forward_normalize(data, min_, max_):
+def forward_normalize(
+		data:Union[torch.Tensor, np.ndarray],
+ 		min_:Union[torch.Tensor, np.ndarray],
+ 		max_:Union[torch.Tensor, np.ndarray],
+ 	) -> Union[torch.Tensor, np.ndarray]:
 	''' forward normalize the data
 	'''
 	ixs = np.where(np.abs(max_-min_)<1e-10)[0]
@@ -164,7 +214,11 @@ def forward_normalize(data, min_, max_):
 		min_[ixs]=np.zeros_like(ixs)
 	return (data - min_) / (max_ - min_)
 
-def reverse_normalize(data, min_, max_):
+def reverse_normalize(
+		data:Union[torch.Tensor, np.ndarray],
+ 		min_:Union[torch.Tensor, np.ndarray],
+ 		max_:Union[torch.Tensor, np.ndarray],
+ 	) -> Union[torch.Tensor, np.ndarray]:
 	''' un-normlaize the data
 	'''
 	ixs = np.where(np.abs(max_-min_)<1e-10)[0]
@@ -235,15 +289,12 @@ def project_to_olymp(
 
 
 
-def get_closest_ohe(cat_vec):
-	''' return index of closest ohe vector
-	'''
-	ohe_options = np.eye(cat_vec.shape[0])
-	dists = np.sum(np.square(np.subtract(ohe_options,cat_vec)), axis=1)
-	return np.argmin(dists)
-
-
-def get_bounds(param_space, mins_x, maxs_x, has_descriptors):
+def get_bounds(
+	param_space:ParameterSpace, 
+	mins_x:torch.Tensor, 
+	maxs_x:torch.Tensor, 
+	has_descriptors:bool
+	) -> torch.Tensor:
 	''' returns scaled bounds of the parameter space
 	torch tensor of shape (# dims, 2) (low and upper bounds)
 	'''
@@ -267,7 +318,12 @@ def get_bounds(param_space, mins_x, maxs_x, has_descriptors):
 
 
 
-def param_vector_to_dict(param_vector, param_names, param_options, param_types):
+def param_vector_to_dict(
+		param_vector:ParameterVector, 
+		param_names:List[str], 
+		param_options:List[Union[float, int, str]], 
+		param_types:List[str],
+	) -> Dict[str, Union[float, int, str]]:
     """parse single sample and return a dict"""
     param_dict = {}
     for param_index, param_name in enumerate(param_names):

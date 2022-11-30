@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import torch
+from botorch.acquisition import AcquisitionFunction
+
+from olympus.campaigns import ParameterSpace
 
 from atlas import Logger
 
@@ -25,18 +30,18 @@ class AcquisitionOptimizer():
 
 	def __init__(
 		self,
-		kind,
-		param_space,
-		acqf,
-		bounds,
-		known_constraints,
-		batch_size,
-		feas_strategy,
-		fca_constraint,
-		has_descriptors,
-		params,
-		mins_x,
-		maxs_x,
+		kind:str,
+		param_space:ParameterSpace,
+		acqf:AcquisitionFunction,
+		bounds:torch.Tensor,
+		known_constraints:Callable,
+		batch_size:int,
+		feas_strategy:str,
+		fca_constraint:Callable,
+		has_descriptors:bool,
+		params:torch.Tensor,
+		mins_x:torch.Tensor,
+		maxs_x:torch.Tensor,
 
 	):
 		self.kind = kind

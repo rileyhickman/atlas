@@ -16,9 +16,13 @@ from atlas.optimizers.gp.planner import BoTorchPlanner
 
 INIT_DESIGN_STRATEGIES_CONT = ['random', 'sobol', 'lhs']
 
-INIT_DESIGN_STRATEGIES_CAT = ['random']
+INIT_DESIGN_STRATEGIES_CAT_OHE = ['random']
 
-INIT_DESIGN_STRATEGIES_MIXED = ['random']
+INIT_DESIGN_STRATEGIES_CAT_DESC = ['random']
+
+INIT_DESIGN_STRATEGIES_MIXED_CAT_CONT = ['random']
+
+INIT_DESIGN_STRATEGIES_MIXED_CAT_DISC = ['random']
 
 INIT_DESIGN_STRATEGIES_DISC = ['random']
 
@@ -27,19 +31,26 @@ def test_init_design_cont(init_design_strategy):
 	run_continuous(init_design_strategy)
 
 
-@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_CAT)
-def test_init_design_cat(init_design_strategy):
-	run_categorical(init_design_strategy)
+@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_CAT_OHE)
+def test_init_design_cat_ohe(init_design_strategy):
+	run_categorical_ohe(init_design_strategy)
+
+@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_CAT_DESC)
+def test_init_design_cat_desc(init_design_strategy):
+	run_categorical_desc(init_design_strategy)
 
 @pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_DISC)
 def test_init_design_disc(init_design_strategy):
 	run_discrete(init_design_strategy)
 
+@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_MIXED_CAT_DISC)
+def test_init_design_mixed_cat_disc(init_design_strategy):
+	run_mixed_cat_dis(init_design_strategy)
 
-@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_MIXED)
-def test_init_design_mixed(init_design_strategy):
-	run_mixed(init_design_strategy)
 
+@pytest.mark.parametrize('init_design_strategy', INIT_DESIGN_STRATEGIES_MIXED_CAT_CONT)
+def test_init_design_mixed_cat_cont(init_design_strategy):
+	run_mixed_cat_cont(init_design_strategy)
 
 
 
@@ -84,8 +95,7 @@ def run_continuous(init_design_strategy):
 	assert len(campaign.observations.get_values())==BUDGET
 
 
-
-def run_categorical(init_design_strategy):
+def run_categorical_ohe(init_design_strategy):
 
 	surface_kind = 'CatDejong'
 	surface = Surface(kind=surface_kind, param_dim=2, num_opts=21)
@@ -99,6 +109,40 @@ def run_categorical(init_design_strategy):
 		init_design_strategy=init_design_strategy,
 		num_init_design=4,
 		batch_size=1,
+		use_descriptors=False, 
+	)
+	planner.set_param_space(surface.param_space)
+
+	BUDGET = 10
+
+	while len(campaign.observations.get_values()) < BUDGET:
+
+		samples = planner.recommend(campaign.observations)
+		for sample in samples:
+			sample_arr = sample.to_array()
+			measurement = np.array(surface.run(sample_arr))
+			#print(sample, measurement)
+			campaign.add_observation(sample_arr, measurement[0])
+
+	assert len(campaign.observations.get_params())==BUDGET
+	assert len(campaign.observations.get_values())==BUDGET
+
+
+def run_categorical_desc(init_design_strategy):
+
+	surface_kind = 'CatDejong'
+	surface = Surface(kind=surface_kind, param_dim=2, num_opts=21)
+
+	campaign = Campaign()
+	campaign.set_param_space(surface.param_space)
+
+	planner = BoTorchPlanner(
+		goal='minimize',
+		feas_strategy='naive-0',
+		init_design_strategy=init_design_strategy,
+		num_init_design=4,
+		batch_size=1,
+		use_descriptors=True
 	)
 	planner.set_param_space(surface.param_space)
 
@@ -167,10 +211,76 @@ def run_discrete(init_design_strategy):
 	assert len(campaign.observations.get_values())==BUDGET
 
 
+def run_mixed_cat_dis(init_design_strategy):
 
-def run_mixed(init_design_strategy):
+	def surface(x):
+		if x['param_0'] == 'x0':
+			factor = 0.1 
+		elif x['param_0'] == 'x1':
+			factor = 1.0
+		elif x['param_0'] == 'x2':
+			factor = 10.
+	
+		return np.sin(8.*x['param_1']) - 2.*np.cos(6.*x['param_1']) + np.exp(-2.*x['param_2']) + 2.*(1./factor)
 
 	param_space = ParameterSpace()
+	param_0 = ParameterCategorical(
+		name='param_0',
+		options=['x0', 'x1', 'x2'],
+	)
+	param_1 = ParameterDiscrete(
+		name='param_1',
+		options=[0.0, 0.25, 0.5, 0.75, 1.0],
+	)
+	param_2 = ParameterDiscrete(
+		name='param_2',
+		options=[0.0, 0.25, 0.5, 0.75, 1.0],
+	)
+	param_space.add(param_0)
+	param_space.add(param_1)
+	param_space.add(param_2)
+
+	planner = BoTorchPlanner(
+		goal='minimize',
+		feas_strategy='naive-0',
+		init_design_strategy=init_design_strategy,
+		num_init_design=4,
+		batch_size=1,
+		use_descriptors=False,
+	)
+
+	planner.set_param_space(param_space)
+
+	campaign = Campaign()
+	campaign.set_param_space(param_space)
+
+	BUDGET = 10
+
+	while len(campaign.observations.get_values()) < BUDGET:
+
+		samples = planner.recommend(campaign.observations)
+		for sample in samples:
+		
+			measurement = surface(sample)
+			campaign.add_observation(sample, measurement)
+
+	assert len(campaign.observations.get_params())==BUDGET
+	assert len(campaign.observations.get_values())==BUDGET
+
+
+def run_mixed_cat_cont(init_design_strategy):
+
+	param_space = ParameterSpace()
+
+	# add dummy param
+	param_space.add(
+		ParameterCategorical(
+			name='dummy',
+			options=[f'x{i}' for i in range(5)],
+			descriptors=[None for i in range(5)]
+		)
+	)
+
 	# add ligand
 	param_space.add(
 		ParameterCategorical(
@@ -235,8 +345,11 @@ def run_mixed(init_design_strategy):
 	assert len(campaign.observations.get_values())==BUDGET
 
 
+def run_mixed_dis_cont(init_design_strategy):
+	return None
 
-
+def run_mixed_cat_dis_cont(init_design_strategy):
+	return None
 
 
 
@@ -245,7 +358,11 @@ def run_mixed(init_design_strategy):
 
 if __name__ == '__main__':
 	#pass
-	run_discrete('random')
+	#run_discrete('random')
 	#run_continuous('lhs')
-	# run_categorical('random')
-	# run_mixed('random')
+	#run_categorical_ohe('random')
+	#run_categorical_desc('random')
+	#run_mixed_cat_dis('random')
+	run_mixed_cat_cont('random')
+	#run_mixed_dis_cont('random')
+	#run_mixed_cat_dis_cont('random')

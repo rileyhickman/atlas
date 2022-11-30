@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import numpy as np
 import torch
+import botorch
 from botorch.optim import optimize_acqf, optimize_acqf_mixed, optimize_acqf_discrete
-
+from botorch.acquisition import AcquisitionFunction
 
 from olympus import ParameterVector
-
+from olympus.campaigns import ParameterSpace
 
 from atlas import Logger
 
@@ -34,17 +37,17 @@ class GradientOptimizer():
 
 	def __init__(
 		self,
-		param_space,
-		acqf,
-		bounds,
-		known_constraints,
-		batch_size,
-		feas_strategy,
-		fca_constraint,
-		has_descriptors,
-		params,
-		mins_x,
-		maxs_x,
+		param_space:ParameterSpace,
+		acqf:AcquisitionFunction,
+		bounds:torch.Tensor,
+		known_constraints:Callable,
+		batch_size:int,
+		feas_strategy:str,
+		fca_constraint:Callable,
+		has_descriptors:bool,
+		params:torch.Tensor,
+		mins_x:torch.Tensor,
+		maxs_x:torch.Tensor,
 	):
 		self.param_space = param_space
 		self.problem_type = infer_problem_type(self.param_space)
@@ -63,12 +66,13 @@ class GradientOptimizer():
 
 
 	def optimize(self):
+
 		best_idx = None # only needed for the fully categorical case
 		if self.problem_type == 'fully_continuous':
 			results = self._optimize_fully_continuous()
-		elif self.problem_type == 'mixed':
+		elif self.problem_type in ['mixed_cat_cont', 'mixed_disc_cont', 'mixed_cat_disc_cont']:
 			results = self._optimize_mixed()
-		elif self.problem_type in ['fully_categorical', 'fully_discrete', 'mixed_dis_cat']:
+		elif self.problem_type in ['fully_categorical', 'fully_discrete', 'mixed_cat_disc']:
 			results, best_idx = self._optimize_fully_categorical()
 
 		return self.postprocess_results(results, best_idx)
@@ -150,15 +154,33 @@ class GradientOptimizer():
 
 	def _optimize_mixed(self):
 
-		fixed_features_list = get_fixed_features_list(self.param_space, self.has_descriptors)
+		fixed_features_list = get_fixed_features_list(
+			self.param_space, self.has_descriptors,
+		)
 
-		results, _ = optimize_acqf_mixed(
+		# TODO: add in fca constraint callable here...
+		constraint_callable = None
+
+		self.choices_feat, self.choices_cat = create_available_options(
+			self.param_space, self._params, constraint_callable, normalize=self.has_descriptors,
+			has_descriptors=self.has_descriptors,
+			mins_x=self._mins_x, maxs_x=self._maxs_x,
+		)
+
+		# print(self.choices_feat)
+		# print(self.choices_feat.shape)
+		print(self.choices_cat)
+		# print(len(self.choices_cat))
+		# quit()
+		
+		results, _ = self._optimize_acqf_mixed(
 			acq_function=self.acqf,
 			bounds=self.bounds,
 			num_restarts=30,
 			q=self.batch_size,
-			raw_samples=800,
 			fixed_features_list=fixed_features_list,
+			cart_prod_choices=self.choices_feat.float(),
+			raw_samples=800,
 		)
 
 		return results
@@ -188,7 +210,7 @@ class GradientOptimizer():
 			max_batch_size=1000,
 			choices=self.choices_feat.float(),
 			unique=True
-				)
+		)
 		return results, best_idx
 
 
@@ -248,6 +270,107 @@ class GradientOptimizer():
 		return [choices[best_idx]], best_idx
 
 
+	def _optimize_acqf_mixed(
+			self, 
+			acq_function, 
+			bounds, 
+			num_restarts,
+			q, 
+			fixed_features_list, 
+			cart_prod_choices, 
+			raw_samples=None, 
+			options=None, 
+			strategy='greedy',
+			inequality_constraints=None,
+			equality_constraints=None,
+			post_processing_func=None,
+			**kwargs,
+			):
+		# function inspired by botorch code
+
+		if not fixed_features_list:
+			raise ValueError("fixed_features_list must be non-empty.")
+
+		if isinstance(acq_function, botorch.acquisition.acquisition.OneShotAcquisitionFunction):
+			if not hasattr(acq_function, "evaluate") and q > 1:
+				raise ValueError(
+					"`OneShotAcquisitionFunction`s that do not implement `evaluate` "
+					"are currently not supported when `q > 1`. This is needed to "
+					"compute the joint acquisition value."
+				)
+
+		print(fixed_features_list[:10])
+		print(len(fixed_features_list))
+		print(cart_prod_choices.shape)
+
+		quit()
+
+		# batch size of 1
+		if q == 1:
+			ff_candidate_list, ff_acq_value_list = [], []
+			# iterate through all the fixed featutes and optimize the continuous
+			# part of the parameter space
+			for fixed_features in fixed_features_list:
+				candidate, acq_value = optimize_acqf(
+					acq_function=acq_function,
+					bounds=bounds,
+					q=q,
+					num_restarts=num_restarts,
+					raw_samples=raw_samples,
+					options=options or {},
+					inequality_constraints=inequality_constraints,
+					equality_constraints=equality_constraints,
+					fixed_features=fixed_features,
+					post_processing_func=post_processing_func,
+					batch_initial_conditions=batch_initial_conditions,
+					return_best_only=True,
+				)
+				ff_candidate_list.append(candidate)
+				ff_acq_value_list.append(acq_value)
+
+			ff_acq_values = torch.stack(ff_acq_value_list)
+			best = torch.argmax(ff_acq_values)
+			return ff_candidate_list[best], ff_acq_values[best]
+
+		# For batch optimization with q > 1 we do not want to enumerate all n_combos^n
+		# possible combinations of discrete choices. Instead, we use sequential greedy
+		# optimization.
+		base_X_pending = acq_function.X_pending
+		candidates = torch.tensor([], device=bounds.device, dtype=bounds.dtype)
+
+		for _ in range(q):
+			candidate, acq_value = optimize_acqf_mixed(
+				acq_function=acq_function,
+				bounds=bounds,
+				q=1,
+				num_restarts=num_restarts,
+				raw_samples=raw_samples,
+				fixed_features_list=fixed_features_list,
+				options=options or {},
+				inequality_constraints=inequality_constraints,
+				equality_constraints=equality_constraints,
+				post_processing_func=post_processing_func,
+				batch_initial_conditions=batch_initial_conditions,
+			)
+			candidates = torch.cat([candidates, candidate], dim=-2)
+			acq_function.set_X_pending(
+				torch.cat([base_X_pending, candidates], dim=-2)
+				if base_X_pending is not None
+				else candidates
+			)
+
+		acq_function.set_X_pending(base_X_pending)
+
+		# compute joint acquisition value
+		if isinstance(acq_function, botorch.acquisition.acquisition.OneShotAcquisitionFunction):
+			acq_value = acq_function.evaluate(X=candidates, bounds=bounds)
+		else:
+			acq_value = acq_function(candidates)
+		return candidates, acq_value
+
+
+
+
 	def postprocess_results(self, results, best_idx=None):
 		# expects list as results
 
@@ -260,42 +383,25 @@ class GradientOptimizer():
 			results_torch = results
 
 
-		# TODO: clean this bit up
-		if self.problem_type in ['fully_categorical', 'mixed', 'mixed_dis_cat'] and not self.has_descriptors:
+		# print(best_idx)
+		# print(results_torch)
+		# print(self.choices_cat[:10])
 
-			# project the sample back to Olympus format
+		# quit()
+
+
+		if self.problem_type in ['fully_categorical', 'fully_discrete', 'mixed_dis_cat']:
+			# simple lookup
 			samples = []
-			for sample_ix in range(len(results_torch)):
-				sample = project_to_olymp(
-					results_torch[sample_ix], self.param_space,
-					has_descriptors=self.has_descriptors,
-					choices_feat=self.choices_feat, choices_cat=self.choices_cat,
-				)
-				samples.append(ParameterVector().from_dict(sample, self.param_space))
-
-
-		elif self.problem_type in ['fully_categorical', 'mixed', 'mixed_dis_cat'] and self.has_descriptors:
-
-			samples = []
-			# if len(results_torch.shape) == 1:
-			# 	results_torch = results_torch.reshape(1, -1)
 			for sample_ix in range(len(results_torch)):
 				sample = self.choices_cat[best_idx[sample_ix]]
 				olymp_sample = {}
-				for elem, name in zip(sample, [p.name for p in self.param_space]):
-					olymp_sample[name] = elem
-				samples.append(ParameterVector().from_dict(olymp_sample, self.param_space))
-
-
-		elif self.problem_type == 'fully_discrete':
-			samples = []
-			# if len(results_torch.shape) == 1:
-			# 	results_torch = results_torch.reshape(1, -1)
-			for sample_ix in range(len(results_torch)):
-				sample = self.choices_cat[best_idx[sample_ix]]
-				olymp_sample = {}
-				for elem, name in zip(sample, [p.name for p in self.param_space]):
-					olymp_sample[name] = elem
+				for elem, param in zip(sample, [p for p in self.param_space]):
+					# convert discrete parameter types to floats
+					if param.type == 'discrete':
+						olymp_sample[param.name] = float(elem)
+					else:
+						olymp_sample[param.name] = elem
 				samples.append(ParameterVector().from_dict(olymp_sample, self.param_space))
 
 

@@ -91,7 +91,7 @@ class MessageLogger:
         self.console.rule()
         msg1 = '\nWelcome to NanoMAP by Soteria Therapeutics!'
         self.console.print(msg1,justify='center', style='#c53a5d bold')
-        msg2 = f'Made with :heart: in :Canada:\n'
+        msg2 = f'Made with :two_hearts: in :Canada:\n'
         self.console.print(msg2,justify='center', style='#e6ad14 bold')
         self.console.rule()
 

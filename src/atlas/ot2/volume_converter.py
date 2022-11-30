@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import yaml
 import itertools
 import numpy as np
@@ -21,7 +23,9 @@ from olympus.planners import RandomSearch
 from atlas.optimizers.gp.planner import BoTorchPlanner
 from atlas.optimizers.acqfs import create_available_options
 
-def get_param_space(campaign_config):
+def get_param_space(
+        campaign_config: Dict[Any, Any],
+    ) -> Tuple[ParameterSpace,ParameterDiscrete,Dict[str,List[str]]]:
     ''' Generate Olympus ParameterSpace object based on the supplied
     configuration for the parameters
     '''
@@ -56,7 +60,7 @@ def get_param_space(campaign_config):
     return func_param_space, full_param_space, full_space_instructions
 
 
-def get_value_space(campaign_config):
+def get_value_space(campaign_config: Dict[Any, Any]) -> ParameterSpace:
     ''' Generate Olympus ParameterSpace object based on the supplied
     configuration for the objectives
     '''
@@ -71,7 +75,7 @@ def get_value_space(campaign_config):
     return value_space
 
 
-def compute_target_conc(campaign_config):
+def compute_target_conc(campaign_config: Dict[Any, Any]) -> Dict[Any, Any]:
     ''' Compute molar target concentrations and total solvent values
     '''
     prep = campaign_config['preparation']
@@ -90,7 +94,10 @@ def compute_target_conc(campaign_config):
 
     return campaign_config
 
-def compute_total_lipid_masses(campaign_config, batch_params):
+def compute_total_lipid_masses(
+        campaign_config: Dict[Any, Any], 
+        batch_params: List[ParameterVector],
+    ) -> np.ndarray:
     total_lipid_masses = []
     prep = campaign_config['preparation']
     lipid_names = [p for p in prep.keys() if prep[p]['type']=='lipid']
@@ -104,7 +111,10 @@ def compute_total_lipid_masses(campaign_config, batch_params):
         )
     return np.array(total_lipid_masses)
 
-def compute_transfer_volumes(campaign_config, batch_params):
+def compute_transfer_volumes(
+        campaign_config: Dict[Any, Any], 
+        batch_params: List[ParameterVector],
+    ) -> Dict[str, np.ndarray]:
     volume_prec = campaign_config['general']['volume_prec']
     prep = campaign_config['preparation']
     drug_names = [p for p in prep.keys() if prep[p]['type']=='drug']
@@ -145,7 +155,11 @@ def compute_transfer_volumes(campaign_config, batch_params):
 
     return transfer_volumes
 
-def func_to_full_params(func_batch_params, full_param_space, full_space_instructions):
+def func_to_full_params(
+        func_batch_params: List[ParameterVector], 
+        full_param_space: ParameterSpace, 
+        full_space_instructions: Dict[str,List[str]],
+    ) -> List[ParameterVector]:
     full_batch_params = []
 
     for func_params in func_batch_params:
@@ -159,50 +173,49 @@ def func_to_full_params(func_batch_params, full_param_space, full_space_instruct
     return full_batch_params
 
 
-def check_stock_solutions(func_param_space, full_space_instructions, campaign_config):
-    ''' Checks all possible options to see if there are any volumes that are
-    < 20 uL and != 0.0
-    '''
-    tmp_campaign_config = campaign_config.copy()
-    # generate all possible options given the full param space
+# def check_stock_solutions(func_param_space, full_space_instructions, campaign_config):
+#     ''' Checks all possible options to see if there are any volumes that are
+#     < 20 uL and != 0.0
+#     '''
+#     tmp_campaign_config = campaign_config.copy()
+#     # generate all possible options given the full param space
 
-    param_names = [p.name for p in func_param_space]
-    param_options = [p.options for p in func_param_space]
-    cart_product = list(itertools.product(*param_options))
-    cart_product = [ParameterVector().from_list(list(elem), param_space=func_param_space) for elem in cart_product]
+#     param_names = [p.name for p in func_param_space]
+#     param_options = [p.options for p in func_param_space]
+#     cart_product = list(itertools.product(*param_options))
+#     cart_product = [ParameterVector().from_list(list(elem), param_space=func_param_space) for elem in cart_product]
 
-    # convert to full param space
-    full_product = func_to_full_params(cart_product, full_space_instructions)
+#     # convert to full param space
+#     full_product = func_to_full_params(cart_product, full_space_instructions)
 
-    is_sat_volumes = False
-    while not is_sat_volumes:
+#     is_sat_volumes = False
+#     while not is_sat_volumes:
 
-        # compute tranfer volumes
-        transfer_volumes = compute_transfer_volumes(tmp_campaign_config, full_product)
-        # check the volumes
-        bad_target_conc = []
-        for component in transfer_volumes.keys():
-            vols = transfer_volumes[component]
-            bad_idx = np.where((vols<20.)&(vols!=0.0))[0]
-            if bad_idx.shape[0]>0:
-                # we have some volumes that are not good, need to reduce the
-                # target concentration of this component
-                bad_target_conc.append(component)
-            else:
-                # all volumes are good
-                pass
+#         # compute tranfer volumes
+#         transfer_volumes = compute_transfer_volumes(tmp_campaign_config, full_product)
+#         # check the volumes
+#         bad_target_conc = []
+#         for component in transfer_volumes.keys():
+#             vols = transfer_volumes[component]
+#             bad_idx = np.where((vols<20.)&(vols!=0.0))[0]
+#             if bad_idx.shape[0]>0:
+#                 # we have some volumes that are not good, need to reduce the
+#                 # target concentration of this component
+#                 bad_target_conc.append(component)
+#             else:
+#                 # all volumes are good
+#                 pass
 
-        if bad_target_conc == []:
-            # done
-            is_sat_volumes = True
-        else:
-            # decrase the target concentration for all the problematic components
-            for component in bad_target_conc:
-                # TODO: implement this...
-                pass
+#         if bad_target_conc == []:
+#             # done
+#             is_sat_volumes = True
+#         else:
+#             # decrase the target concentration for all the problematic components
+#             for component in bad_target_conc:
+#                 # TODO: implement this...
+#                 pass
 
-    return
-
+#     return None
 
 
 if __name__ == '__main__':
