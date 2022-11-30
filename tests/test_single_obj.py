@@ -60,11 +60,11 @@ MIXED_CAT_DISC_CONT = {
 }
 
 
-# @pytest.mark.parametrize("init_design_strategy", CONT["init_design_strategy"])
-# @pytest.mark.parametrize("batch_size", CONT["batch_size"])
-# @pytest.mark.parametrize("use_descriptors", CONT["use_descriptors"])
-# def test_init_design_cont(init_design_strategy, batch_size, use_descriptors):
-#     run_continuous(init_design_strategy, batch_size, use_descriptors)
+@pytest.mark.parametrize("init_design_strategy", CONT["init_design_strategy"])
+@pytest.mark.parametrize("batch_size", CONT["batch_size"])
+@pytest.mark.parametrize("use_descriptors", CONT["use_descriptors"])
+def test_init_design_cont(init_design_strategy, batch_size, use_descriptors):
+    run_continuous(init_design_strategy, batch_size, use_descriptors)
 
 
 @pytest.mark.parametrize("init_design_strategy", DISC["init_design_strategy"])
@@ -81,50 +81,50 @@ def test_init_design_cat(init_design_strategy, batch_size, use_descriptors):
     run_categorical(init_design_strategy, batch_size, use_descriptors)
 
 
-# @pytest.mark.parametrize(
-#     "init_design_strategy", MIXED_CAT_CONT["init_design_strategy"]
-# )
-# @pytest.mark.parametrize("batch_size", MIXED_CAT_CONT["batch_size"])
-# @pytest.mark.parametrize("use_descriptors", MIXED_CAT_CONT["use_descriptors"])
-# def test_init_design_mixed_cat_cont(
-#     init_design_strategy, batch_size, use_descriptors
-# ):
-#     run_mixed_cat_cont(init_design_strategy, batch_size, use_descriptors)
-#
-#
-# @pytest.mark.parametrize(
-#     "init_design_strategy", MIXED_DISC_CONT["init_design_strategy"]
-# )
-# @pytest.mark.parametrize("batch_size", MIXED_DISC_CONT["batch_size"])
-# @pytest.mark.parametrize("use_descriptors", MIXED_DISC_CONT["use_descriptors"])
-# def test_init_design_mixed_disc_cont(
-#     init_design_strategy, batch_size, use_descriptors
-# ):
-#     run_mixed_disc_cont(init_design_strategy, batch_size, use_descriptors)
-#
-#
-# @pytest.mark.parametrize(
-#     "init_design_strategy", MIXED_CAT_DISC["init_design_strategy"]
-# )
-# @pytest.mark.parametrize("batch_size", MIXED_CAT_DISC["batch_size"])
-# @pytest.mark.parametrize("use_descriptors", MIXED_CAT_DISC["use_descriptors"])
-# def test_init_design_mixed_cat_disc(
-#     init_design_strategy, batch_size, use_descriptors
-# ):
-#     run_mixed_cat_disc(init_design_strategy, batch_size, use_descriptors)
-#
-#
-# @pytest.mark.parametrize(
-#     "init_design_strategy", MIXED_CAT_DISC_CONT["init_design_strategy"]
-# )
-# @pytest.mark.parametrize("batch_size", MIXED_CAT_DISC_CONT["batch_size"])
-# @pytest.mark.parametrize(
-#     "use_descriptors", MIXED_CAT_DISC_CONT["use_descriptors"]
-# )
-# def test_init_design_mixed_cat_disc_cont(
-#     init_design_strategy, batch_size, use_descriptors
-# ):
-#     run_mixed_cat_disc_cont(init_design_strategy, batch_size, use_descriptors)
+@pytest.mark.parametrize(
+    "init_design_strategy", MIXED_CAT_CONT["init_design_strategy"]
+)
+@pytest.mark.parametrize("batch_size", MIXED_CAT_CONT["batch_size"])
+@pytest.mark.parametrize("use_descriptors", MIXED_CAT_CONT["use_descriptors"])
+def test_init_design_mixed_cat_cont(
+    init_design_strategy, batch_size, use_descriptors
+):
+    run_mixed_cat_cont(init_design_strategy, batch_size, use_descriptors)
+
+
+@pytest.mark.parametrize(
+    "init_design_strategy", MIXED_DISC_CONT["init_design_strategy"]
+)
+@pytest.mark.parametrize("batch_size", MIXED_DISC_CONT["batch_size"])
+@pytest.mark.parametrize("use_descriptors", MIXED_DISC_CONT["use_descriptors"])
+def test_init_design_mixed_disc_cont(
+    init_design_strategy, batch_size, use_descriptors
+):
+    run_mixed_disc_cont(init_design_strategy, batch_size, use_descriptors)
+
+
+@pytest.mark.parametrize(
+    "init_design_strategy", MIXED_CAT_DISC["init_design_strategy"]
+)
+@pytest.mark.parametrize("batch_size", MIXED_CAT_DISC["batch_size"])
+@pytest.mark.parametrize("use_descriptors", MIXED_CAT_DISC["use_descriptors"])
+def test_init_design_mixed_cat_disc(
+    init_design_strategy, batch_size, use_descriptors
+):
+    run_mixed_cat_disc(init_design_strategy, batch_size, use_descriptors)
+
+
+@pytest.mark.parametrize(
+    "init_design_strategy", MIXED_CAT_DISC_CONT["init_design_strategy"]
+)
+@pytest.mark.parametrize("batch_size", MIXED_CAT_DISC_CONT["batch_size"])
+@pytest.mark.parametrize(
+    "use_descriptors", MIXED_CAT_DISC_CONT["use_descriptors"]
+)
+def test_init_design_mixed_cat_disc_cont(
+    init_design_strategy, batch_size, use_descriptors
+):
+    run_mixed_cat_disc_cont(init_design_strategy, batch_size, use_descriptors)
 
 
 def run_continuous(

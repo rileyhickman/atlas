@@ -66,16 +66,16 @@ MIXED_CAT_DISC_CONT = {
 SCALARIZER_KINDS = ["WeightedSum", "Parego", "Hypervolume", "Chimera"]
 
 
-# @pytest.mark.parametrize("init_design_strategy", CONT["init_design_strategy"])
-# @pytest.mark.parametrize("batch_size", CONT["batch_size"])
-# @pytest.mark.parametrize("use_descriptors", CONT["use_descriptors"])
-# @pytest.mark.parametrize("scalarizer_kind", SCALARIZER_KINDS)
-# def test_cont(
-#     init_design_strategy, batch_size, use_descriptors, scalarizer_kind
-# ):
-#     run_continuous(
-#         init_design_strategy, batch_size, use_descriptors, scalarizer_kind
-#     )
+@pytest.mark.parametrize("init_design_strategy", CONT["init_design_strategy"])
+@pytest.mark.parametrize("batch_size", CONT["batch_size"])
+@pytest.mark.parametrize("use_descriptors", CONT["use_descriptors"])
+@pytest.mark.parametrize("scalarizer_kind", SCALARIZER_KINDS)
+def test_cont(
+    init_design_strategy, batch_size, use_descriptors, scalarizer_kind
+):
+    run_continuous(
+        init_design_strategy, batch_size, use_descriptors, scalarizer_kind
+    )
 
 
 @pytest.mark.parametrize("init_design_strategy", DISC["init_design_strategy"])
@@ -102,18 +102,18 @@ def test_cat(
     )
 
 
-# @pytest.mark.parametrize(
-#     "init_design_strategy", MIXED_CAT_CONT["init_design_strategy"]
-# )
-# @pytest.mark.parametrize("batch_size", MIXED_CAT_CONT["batch_size"])
-# @pytest.mark.parametrize("use_descriptors", MIXED_CAT_CONT["use_descriptors"])
-# @pytest.mark.parametrize("scalarizer_kind", SCALARIZER_KINDS)
-# def test_mixed_cat_cont(
-#     init_design_strategy, batch_size, use_descriptors, scalarizer_kind
-# ):
-#     run_mixed_cat_cont(
-#         init_design_strategy, batch_size, use_descriptors, scalarizer_kind
-#     )
+@pytest.mark.parametrize(
+    "init_design_strategy", MIXED_CAT_CONT["init_design_strategy"]
+)
+@pytest.mark.parametrize("batch_size", MIXED_CAT_CONT["batch_size"])
+@pytest.mark.parametrize("use_descriptors", MIXED_CAT_CONT["use_descriptors"])
+@pytest.mark.parametrize("scalarizer_kind", SCALARIZER_KINDS)
+def test_mixed_cat_cont(
+    init_design_strategy, batch_size, use_descriptors, scalarizer_kind
+):
+    run_mixed_cat_cont(
+        init_design_strategy, batch_size, use_descriptors, scalarizer_kind
+    )
 
 
 def generate_scalarizer_object(scalarizer_kind, value_space):
