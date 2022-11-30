@@ -9,9 +9,9 @@ orbs:
 # See: https://circleci.com/docs/2.0/configuration-reference/#jobs
 jobs:
   build-and-test:
-    # executor: python/default
-    docker:
-      - image: cimg/python:3.8.15
+    executor: python/default
+    # docker:
+    #   - image: cimg/python:3.8.15
     steps:
       - checkout
       - run:
