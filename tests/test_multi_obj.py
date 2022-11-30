@@ -280,11 +280,11 @@ SCALARIZER_KINDS = ["WeightedSum", "Parego", "Hypervolume", "Chimera"]
 # ):
 
 
-if __name__ == "__main__":
-
-    # test_continuous_weighted_sum()
-    # test_continuous_hypervolume()
-    # test_continuous_chimera()
-    # test_continuous_parego()
-
-    pass
+# if __name__ == "__main__":
+#
+#     # test_continuous_weighted_sum()
+#     # test_continuous_hypervolume()
+#     # test_continuous_chimera()
+#     # test_continuous_parego()
+#
+#     pass
