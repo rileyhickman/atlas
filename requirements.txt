@@ -14,3 +14,4 @@ SQLAlchemy
 silence-tensorflow
 deap
 rich
+pytest
