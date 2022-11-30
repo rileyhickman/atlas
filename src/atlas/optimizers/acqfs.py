@@ -251,6 +251,7 @@ class FeasibilityAwareEI(ExpectedImprovement):
 
 
 	def forward(self, X):
+
 		acqf = super().forward(X) # get the EI acquisition
 		# approximately normalize the EI acquisition function
 		acqf = (acqf - self.acqf_min_max[0]) / (self.acqf_min_max[1]-self.acqf_min_max[0])
@@ -400,20 +401,20 @@ def sample_around_x(raw_samples, constraint_callable):
 
 
 def create_available_options(
-		param_space, 
-		params, 
-		constraint_callable, 
-		normalize, 
-		mins_x, 
-		maxs_x, 
+		param_space,
+		params,
+		constraint_callable,
+		normalize,
+		mins_x,
+		maxs_x,
 		has_descriptors,
 	):
 	''' build cartesian product space of options, then remove options
 	which have already been measured. Returns an (num_options, num_dims)
 	torch tensor with all possible options
 
-	If the parameter space is mixed, build and return the Cartesian product space of 
-	only the categorical and discrete parameters. 
+	If the parameter space is mixed, build and return the Cartesian product space of
+	only the categorical and discrete parameters.
 
 	Args:
 		param_space (obj): Olympus parameter space object
@@ -442,7 +443,7 @@ def create_available_options(
 	cart_product = list(itertools.product(*param_options))
 	cart_product = [list(elem) for elem in cart_product]
 
-	if len(param_names)==len(param_space): 
+	if len(param_names)==len(param_space):
 		# no continuous parameters
 		# remove options that we have measured already
 		current_avail_feat  = []
@@ -475,10 +476,6 @@ def create_available_options(
 			# FCA approach, apply feasibility constraint
 			constraint_input = current_avail_feat_unconst.view(current_avail_feat_unconst.shape[0], 1, current_avail_feat_unconst.shape[1])
 			constraint_vals = constraint_callable(constraint_input)
-			print('constraint_vals : ', constraint_vals)
-			print('constraint_vals max : ', torch.amax(constraint_vals))
-			print('constraint_vals min : ', torch.amin(constraint_vals))
-
 			feas_mask = torch.where( constraint_vals >= 0.)[0]
 			print(f'{feas_mask.shape[0]}/{current_avail_feat_unconst.shape[0]} options are feasible')
 			if feas_mask.shape[0] == 0:
@@ -499,7 +496,7 @@ def create_available_options(
 
 		return current_avail_feat, current_avail_cat
 
-	else: 
+	else:
 		# at least one continuous parameter, no need to remove any options
 		current_avail_feat  = []
 		current_avail_cat = []
@@ -518,15 +515,11 @@ def create_available_options(
 		current_avail_feat_unconst = np.array(current_avail_feat)
 		current_avail_cat_unconst  =  np.array(current_avail_cat)
 
-		# forward normalize the options before evaluating the c
-		if normalize:
-			current_avail_feat_unconst = forward_normalize(current_avail_feat_unconst, mins_x, maxs_x)
+		# TODO: may need to add the constraint checking here too...
+		# forward normalize the options before evaluating the constaints
+		# if normalize:
+		# 	current_avail_feat_unconst = forward_normalize(current_avail_feat_unconst, mins_x, maxs_x)
 
 		current_avail_feat_unconst = torch.tensor(current_avail_feat_unconst)
 
-		# TODO: may need to add the constraint checking here too...
 		return current_avail_feat_unconst, current_avail_cat_unconst
-
-
-
-	

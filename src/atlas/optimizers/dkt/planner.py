@@ -34,7 +34,6 @@ from atlas.optimizers.utils import (
 	forward_standardize,
 	reverse_standardize,
 	infer_problem_type,
-	project_to_olymp,
 	get_bounds,
 	get_cat_dims,
 	get_fixed_features_list,

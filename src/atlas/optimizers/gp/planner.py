@@ -40,7 +40,6 @@ from atlas.optimizers.utils import (
 	forward_standardize,
 	reverse_standardize,
 	infer_problem_type,
-	project_to_olymp,
 	get_bounds,
 	get_cat_dims,
 	get_fixed_features_list,
@@ -115,7 +114,7 @@ class BoTorchPlanner(BasePlanner):
 
 		'''
 		# infer the model based on the parameter types
-		if self.problem_type in ['fully_continuous','fully_discrete']:
+		if self.problem_type in ['fully_continuous','fully_discrete', 'mixed_disc_cont']:
 			model = SingleTaskGP(train_x, train_y)
 		elif self.problem_type == 'fully_categorical':
 			if self.has_descriptors:
@@ -125,7 +124,7 @@ class BoTorchPlanner(BasePlanner):
 				# if we have no descriptors, use a Categorical kernel
 				# based on the HammingDistance
 				model = CategoricalSingleTaskGP(train_x, train_y)
-		elif 'mixed_' in self.problem_type:
+		elif 'mixed_cat_' in self.problem_type:
 			if self.has_descriptors:
 				# we have some descriptors, use the Matern kernel
 				model = SingleTaskGP(train_x, train_y)
@@ -231,6 +230,7 @@ class BoTorchPlanner(BasePlanner):
 					# do nothing at all and use the feasibilty surrogate as the acquisition
 					use_p_feas_only = True
 
+
 			# builds and fits the regression surrogate model
 			self.reg_model = self.build_train_regression_gp(self.train_x_scaled_reg, self.train_y_scaled_reg)
 
@@ -256,6 +256,7 @@ class BoTorchPlanner(BasePlanner):
 			acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled)
 
 
+
 			if self.batch_size == 1:
 				self.acqf = FeasibilityAwareEI(
 					self.reg_model, self.cla_model, self.cla_likelihood,
@@ -263,8 +264,11 @@ class BoTorchPlanner(BasePlanner):
 					self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max,
 					)
 			elif self.batch_size > 1:
-				#self.acqf = FeasibilityAwareQEI(
-				self.acqf = FeasibilityAwareEI(
+				if self.problem_type == 'fully_continuous':
+					acqf_object = FeasibilityAwareQEI
+				else:
+					acqf_object = FeasibilityAwareEI
+				self.acqf = acqf_object(
 					self.reg_model, self.cla_model, self.cla_likelihood,
 					self.param_space, f_best_scaled,
 					self.feas_strategy, self.feas_param, infeas_ratio, acqf_min_max
@@ -299,9 +303,9 @@ class BoTorchPlanner(BasePlanner):
 
 
 	def get_aqcf_min_max(
-			self, 
-			reg_model: gpytorch.models.ExactGP, 
-			f_best_scaled:torch.Tensor, 
+			self,
+			reg_model: gpytorch.models.ExactGP,
+			f_best_scaled:torch.Tensor,
 			num_samples:int=2000,
 		) -> Tuple[int, int]:
 		''' computes the min and max value of the acquisition function without
@@ -334,4 +338,3 @@ class BoTorchPlanner(BasePlanner):
 			min_ = 0.0
 
 		return min_, max_
-

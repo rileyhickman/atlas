@@ -157,7 +157,7 @@ class Orchestrator:
 		while len(self.func_campaign.observations.get_values()) < self.BUDGET:
 
 			# print('CAMPAIGN OBS : ', self.full_campaign.observations.get_params())
-			vals = self.full_campaign.observations.get_values()			
+			vals = self.full_campaign.observations.get_values()
 			print([np.isnan(v[0]) for v in vals])
 			print('CAMPAIGN OBS : ', self.full_campaign.observations.get_values())
 

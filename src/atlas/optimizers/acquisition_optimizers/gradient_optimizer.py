@@ -21,7 +21,6 @@ from atlas.optimizers.utils import (
 	forward_standardize,
 	reverse_standardize,
 	infer_problem_type,
-	project_to_olymp,
 	get_bounds,
 	get_cat_dims,
 	get_fixed_features_list,
@@ -71,7 +70,7 @@ class GradientOptimizer():
 		if self.problem_type == 'fully_continuous':
 			results = self._optimize_fully_continuous()
 		elif self.problem_type in ['mixed_cat_cont', 'mixed_disc_cont', 'mixed_cat_disc_cont']:
-			results = self._optimize_mixed()
+			results, best_idx = self._optimize_mixed()
 		elif self.problem_type in ['fully_categorical', 'fully_discrete', 'mixed_cat_disc']:
 			results, best_idx = self._optimize_fully_categorical()
 
@@ -167,13 +166,7 @@ class GradientOptimizer():
 			mins_x=self._mins_x, maxs_x=self._maxs_x,
 		)
 
-		# print(self.choices_feat)
-		# print(self.choices_feat.shape)
-		print(self.choices_cat)
-		# print(len(self.choices_cat))
-		# quit()
-		
-		results, _ = self._optimize_acqf_mixed(
+		results, best_idx = self._optimize_acqf_mixed(
 			acq_function=self.acqf,
 			bounds=self.bounds,
 			num_restarts=30,
@@ -183,7 +176,7 @@ class GradientOptimizer():
 			raw_samples=800,
 		)
 
-		return results
+		return results, best_idx
 
 	def _optimize_fully_categorical(self):
 		# need to implement the choices input, which is a
@@ -271,19 +264,20 @@ class GradientOptimizer():
 
 
 	def _optimize_acqf_mixed(
-			self, 
-			acq_function, 
-			bounds, 
+			self,
+			acq_function,
+			bounds,
 			num_restarts,
-			q, 
-			fixed_features_list, 
-			cart_prod_choices, 
-			raw_samples=None, 
-			options=None, 
+			q,
+			fixed_features_list,
+			cart_prod_choices,
+			raw_samples=None,
+			options=None,
 			strategy='greedy',
 			inequality_constraints=None,
 			equality_constraints=None,
 			post_processing_func=None,
+			batch_initial_conditions=None,
 			**kwargs,
 			):
 		# function inspired by botorch code
@@ -299,17 +293,12 @@ class GradientOptimizer():
 					"compute the joint acquisition value."
 				)
 
-		print(fixed_features_list[:10])
-		print(len(fixed_features_list))
-		print(cart_prod_choices.shape)
-
-		quit()
-
 		# batch size of 1
 		if q == 1:
 			ff_candidate_list, ff_acq_value_list = [], []
 			# iterate through all the fixed featutes and optimize the continuous
 			# part of the parameter space
+			# fixed features and cart_prod choices have the same ordering
 			for fixed_features in fixed_features_list:
 				candidate, acq_value = optimize_acqf(
 					acq_function=acq_function,
@@ -329,8 +318,10 @@ class GradientOptimizer():
 				ff_acq_value_list.append(acq_value)
 
 			ff_acq_values = torch.stack(ff_acq_value_list)
-			best = torch.argmax(ff_acq_values)
-			return ff_candidate_list[best], ff_acq_values[best]
+			best_idx = torch.argmax(ff_acq_values)
+
+			return ff_candidate_list[best_idx], [best_idx.detach()]
+
 
 		# For batch optimization with q > 1 we do not want to enumerate all n_combos^n
 		# possible combinations of discrete choices. Instead, we use sequential greedy
@@ -366,6 +357,7 @@ class GradientOptimizer():
 			acq_value = acq_function.evaluate(X=candidates, bounds=bounds)
 		else:
 			acq_value = acq_function(candidates)
+
 		return candidates, acq_value
 
 
@@ -382,19 +374,11 @@ class GradientOptimizer():
 			# TODO: update this
 			results_torch = results
 
-
-		# print(best_idx)
-		# print(results_torch)
-		# print(self.choices_cat[:10])
-
-		# quit()
-
-
-		if self.problem_type in ['fully_categorical', 'fully_discrete', 'mixed_dis_cat']:
+		if self.problem_type in ['fully_categorical', 'fully_discrete', 'mixed_cat_disc']:
 			# simple lookup
-			samples = []
-			for sample_ix in range(len(results_torch)):
-				sample = self.choices_cat[best_idx[sample_ix]]
+			return_params = []
+			for sample_idx in range(len(results_torch)):
+				sample = self.choices_cat[best_idx[sample_idx]]
 				olymp_sample = {}
 				for elem, param in zip(sample, [p for p in self.param_space]):
 					# convert discrete parameter types to floats
@@ -402,26 +386,51 @@ class GradientOptimizer():
 						olymp_sample[param.name] = float(elem)
 					else:
 						olymp_sample[param.name] = elem
-				samples.append(ParameterVector().from_dict(olymp_sample, self.param_space))
-
+				return_params.append(ParameterVector().from_dict(olymp_sample, self.param_space))
 
 		else:
+			# ['fully_continuous', 'mixed_cat_cont', 'mixed_dis_cont', 'mixed_cat_dis_cont']
 			# reverse transform the inputs
 			results_np = results_torch.detach().numpy()
 			results_np = reverse_normalize(results_np, self._mins_x, self._maxs_x)
-			if len(results_np.shape) == 1:
-				results_np = results_np.reshape(1, -1)
-			samples = []
-			for sample_ix in range(results_np.shape[0]):
-				# project the sample back to Olympus format
-				sample = project_to_olymp(
-					results_np[sample_ix],
-					self.param_space,
-					has_descriptors=self.has_descriptors,
-					choices_feat=self.choices_feat, choices_cat=self.choices_cat,
-				)
-				samples.append(ParameterVector().from_dict(sample, self.param_space))
 
-		return_params = samples
+			return_params = []
+			for sample_idx in range(results_np.shape[0]):
+				# project the sample back to Olympus format
+				if self.problem_type=='fully_continuous':
+					cat_choice=None
+				else:
+					cat_choice = self.choices_cat[best_idx[sample_idx]]
+
+				olymp_sample = {}
+				idx_counter = 0
+				cat_dis_idx_counter = 0
+				for param_idx, param in enumerate(self.param_space):
+					if param.type == 'continuous':
+						# if continuous, check to see if the proposed param is
+						# within bounds, if not, project in
+						val = results_np[sample_idx,idx_counter]
+						if val > param.high:
+							val = param.high
+						elif val < param.low:
+							val = param.low
+						else:
+							pass
+						idx_counter += 1
+					elif param.type == 'categorical':
+						val = cat_choice[cat_dis_idx_counter]
+						if self.has_descriptors:
+							idx_counter += len(param.descriptors[0])
+						else:
+							idx_counter += len(param.options)
+						cat_dis_idx_counter += 1
+					elif param.type == 'discrete':
+						val = float(cat_choice[cat_dis_idx_counter])
+						idx_counter+=1
+						cat_dis_idx_counter+=1
+
+					olymp_sample[param.name] = val
+
+				return_params.append(ParameterVector().from_dict(olymp_sample, self.param_space))
 
 		return return_params

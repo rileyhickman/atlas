@@ -76,10 +76,18 @@ def get_fixed_features_list(param_space:ParameterSpace, has_descriptors:bool):
 	cat_dims = []
 	cat_params = []
 	for p in param_space:
-		if p.type in ['categorical', 'discrete']:
-			dims = np.arange(dim, dim+len(p.options))
+		if p.type == 'categorical':
+			if has_descriptors:
+				dims = np.arange(dim, dim+len(p.descriptors[0]))
+			else:
+				dims = np.arange(dim, dim+len(p.options))
 			cat_dims.extend(dims)
 			cat_params.append(p)
+			dim+=len(dims)
+		elif p.type == 'discrete':
+			cat_dims.append(dim)
+			cat_params.append(p)
+			dim+=1
 		else:
 			dim+=1
 
@@ -87,31 +95,23 @@ def get_fixed_features_list(param_space:ParameterSpace, has_descriptors:bool):
 	cart_product = list(itertools.product(*param_options))
 	cart_product = [list(elem) for elem in cart_product]
 
-	# print(cart_product)
-	# print(len(cart_product))
-	# quit()
-
 	current_avail_feat  = []
 	current_avail_cat = []
 	for elem in cart_product:
-		# convert to ohe and add to currently available options
 		ohe = []
-		#for val, obj in zip(elem, param_space):
 		for val, obj in zip(elem, cat_params):
-			ohe.append(cat_param_to_feat(obj, val, has_descriptors))
-		current_avail_feat.append(np.concatenate(ohe))
+			if obj.type=='categorical':
+				ohe.extend(cat_param_to_feat(obj, val, has_descriptors))
+			else:
+				ohe.append(val)
+		current_avail_feat.append(np.array(ohe))
 		current_avail_cat.append(elem)
-
-	print(current_avail_feat)
-	print(current_avail_feat.shape)
-	quit()
 
 	# make list
 	for feat in current_avail_feat:
 		fixed_features_list.append(
 			{dim_ix:feat[ix] for ix, dim_ix in enumerate(cat_dims)}
 		)
-
 
 	return fixed_features_list
 
@@ -142,8 +142,8 @@ def cat_param_to_feat(
 
 
 def propose_randomly(
-		num_proposals:int, 
-		param_space:ParameterSpace, 
+		num_proposals:int,
+		param_space:ParameterSpace,
 		has_descriptors:bool,
 	) -> Tuple[np.ndarray, np.ndarray]:
 	''' Randomly generate num_proposals proposals. Returns the numerical
@@ -228,76 +228,17 @@ def reverse_normalize(
 	return data * (max_ - min_) + min_
 
 
-def project_to_olymp(
-	results,
-	param_space,
-	has_descriptors=False,
-	choices_feat=None,
-	choices_cat=None,
-	):
-	''' project an acquisition function result numpy array to an
-	Olympus param vector to be returned by the planners _ask method
-	'''
-	olymp_samples = {}
-	if has_descriptors:
-		# simply look up the index
-		# TODO: this is kind of a hack, will fail in some cases...
-		# consider cleaning this up
-		bools = [torch.all(results.float()==choices_feat[i, :].float()) for i in range(choices_feat.shape[0])]
-		if bools.count(True)>=1:
-			idx = np.where(bools)[0][0]
-		else:
-			print('no matches ... ')
-			quit()
-		sample = choices_cat[idx]
-		for elem, name in zip(sample, [p.name for p in param_space]):
-			olymp_samples[name] = elem
-
-		return olymp_samples
-
-	idx_counter = 0
-	for param_ix, param in enumerate(param_space):
-		if param.type == 'continuous':
-			# if continuous, check to see if the proposed param is
-			# within bounds, if not, project in
-			sample = results[idx_counter]
-			if sample > param.high:
-				sample = param.high
-			elif sample < param.low:
-				sample = param.low
-			else:
-				pass
-			idx_counter += 1
-		elif param.type == 'categorical':
-			if has_descriptors:
-				pass
-			else:
-				# if categorical, scan the one-hot encoded portion
-				cat_vec = results[idx_counter:idx_counter+len(param.options)]
-				#argmin = get_closest_ohe(cat_vec)
-				argmax = np.argmax(cat_vec)
-				sample = param.options[argmax]
-				idx_counter += len(param.options)
-		elif param.type == 'discrete':
-			# TODO: discrete params not supported now
-			# something is wrong if we make it here...
-			quit()
-		# add sample to dictionary
-		olymp_samples[param.name] = sample
-
-	return olymp_samples
-
-
 
 def get_bounds(
-	param_space:ParameterSpace, 
-	mins_x:torch.Tensor, 
-	maxs_x:torch.Tensor, 
+	param_space:ParameterSpace,
+	mins_x:torch.Tensor,
+	maxs_x:torch.Tensor,
 	has_descriptors:bool
 	) -> torch.Tensor:
 	''' returns scaled bounds of the parameter space
 	torch tensor of shape (# dims, 2) (low and upper bounds)
 	'''
+
 	bounds = []
 	idx_counter = 0
 	for param_ix, param in enumerate(param_space):
@@ -306,22 +247,30 @@ def get_bounds(
 			b = (b-mins_x[idx_counter]) / (maxs_x[idx_counter]-mins_x[idx_counter])
 			bounds.append(b)
 			idx_counter += 1
+		elif param.type == 'discrete':
+			b = np.array([np.amin(param.options), np.amax(param.options)])
+			b = (b-mins_x[idx_counter]) / (maxs_x[idx_counter]-mins_x[idx_counter])
+			bounds.append(b)
+			idx_counter += 1
 		elif param.type == 'categorical':
 			if has_descriptors:
-				bounds += [[np.amin(param.descriptors[opt_ix]), np.amax(param.descriptors[opt_ix])] for opt_ix in range(len(param.options))]
+				for desc_ix in range( len(param.descriptors[0]) ):
+					min_ = np.amin([param.descriptors[opt_ix][desc_ix] for opt_ix in range(len(param.options))])
+					max_ = np.amax([param.descriptors[opt_ix][desc_ix] for opt_ix in range(len(param.options))])
+					bounds += [[min_, max_]]
+				idx_counter += len(param.descriptors[0])
 			else:
 				bounds += [[0, 1] for _ in param.options]
-			idx_counter += len(param.options)
-
+				idx_counter += len(param.options)
 
 	return torch.tensor(np.array(bounds)).T.float()
 
 
 
 def param_vector_to_dict(
-		param_vector:ParameterVector, 
-		param_names:List[str], 
-		param_options:List[Union[float, int, str]], 
+		param_vector:ParameterVector,
+		param_names:List[str],
+		param_options:List[Union[float, int, str]],
 		param_types:List[str],
 	) -> Dict[str, Union[float, int, str]]:
     """parse single sample and return a dict"""

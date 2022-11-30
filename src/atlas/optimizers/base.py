@@ -40,7 +40,6 @@ from atlas.optimizers.utils import (
 	forward_standardize,
 	reverse_standardize,
 	infer_problem_type,
-	project_to_olymp,
 	get_bounds,
 	get_cat_dims,
 	get_fixed_features_list,
@@ -160,7 +159,7 @@ class BasePlanner(CustomPlanner):
 				self.has_descriptors = True
 
 
-		elif self.problem_type in ['mixed','mixed_dis_cat']:
+		elif self.problem_type in ['mixed_cat_cont','mixed_cat_dis']:
 			descriptors = []
 			for p in self.param_space:
 				if p.type == 'categorical':
@@ -179,8 +178,8 @@ class BasePlanner(CustomPlanner):
 
 
 	def build_train_classification_gp(
-			self, 
-			train_x:torch.Tensor, 
+			self,
+			train_x:torch.Tensor,
 			train_y:torch.Tensor
 		) -> Tuple[gpytorch.models.ApproximateGP, gpytorch.likelihoods.BernoulliLikelihood]:
 		''' build the GP classification model and likelihood
@@ -194,10 +193,10 @@ class BasePlanner(CustomPlanner):
 		return model, likelihood
 
 	def train_vgp(
-			self, 
-			model:gpytorch.models.ApproximateGP, 
-			likelihood:gpytorch.likelihoods.BernoulliLikelihood, 
-			train_x:torch.Tensor, 
+			self,
+			model:gpytorch.models.ApproximateGP,
+			likelihood:gpytorch.likelihoods.BernoulliLikelihood,
+			train_x:torch.Tensor,
 			train_y:torch.Tensor
 		) -> Tuple[gpytorch.models.ApproximateGP, gpytorch.likelihoods.BernoulliLikelihood]:
 
@@ -303,8 +302,8 @@ class BasePlanner(CustomPlanner):
 
 
 	def reg_surrogate(
-			self, 
-			X: torch.Tensor, 
+			self,
+			X: torch.Tensor,
 			return_np:bool=False,
 		) -> Tuple[Union[torch.Tensor, np.ndarray],Union[torch.Tensor, np.ndarray]]:
 		''' make prediction using regression surrogate model
@@ -355,9 +354,9 @@ class BasePlanner(CustomPlanner):
 
 
 	def cla_surrogate(
-			self, 
-			X:torch.Tensor, 
-			return_np:bool=False, 
+			self,
+			X:torch.Tensor,
+			return_np:bool=False,
 			normalize:bool=True,
 		) -> Union[torch.Tensor, np.ndarray]:
 
@@ -403,8 +402,8 @@ class BasePlanner(CustomPlanner):
 
 	def acquisition_function(
 			self,
-			X:torch.Tensor, 
-			return_np:bool=True, 
+			X:torch.Tensor,
+			return_np:bool=True,
 			normalize:bool=True,
 		) -> Union[torch.Tensor, np.ndarray]:
 
@@ -492,10 +491,7 @@ class BasePlanner(CustomPlanner):
 					_max=1.0
 					_min=0.0
 				p_infeas = (p_infeas-_min)/(_max-_min)
-
-
 			constraint_val = (1.-p_infeas) - self.feas_param
 			#constraint_val = (1. - self.cla_likelihood(self.cla_model(X.float())).mean.unsqueeze(-1).double()) - self.feas_param
-
 
 		return constraint_val
