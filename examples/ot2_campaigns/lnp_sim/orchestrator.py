@@ -45,8 +45,8 @@ class Orchestrator:
             self.func_param_space,
             self.full_param_space,
             self.full_space_instructions,
-        ) = get_param_space(self.campaign_config)
-        self.value_space = get_value_space(self.campaign_config)
+        ) = self.get_param_space(self.campaign_config)
+        self.value_space = self.get_value_space(self.campaign_config)
         # set campaign
         self.set_campaign()
         Logger.log_config(self.full_campaign, self.campaign_config)
@@ -62,6 +62,80 @@ class Orchestrator:
         )
         # setup Google sheet manager
         self.instantiate_sheet_manager()
+
+
+
+    def func_to_full_params(
+        self,
+        func_batch_params: List[ParameterVector],
+        full_param_space: ParameterSpace, 
+        full_space_instructions: Dict[str, List[str]],
+    ) -> List[ParameterVector]: 
+        full_batch_params = []
+
+        for func_params in func_batch_params:
+            full_params_dict = func_params.to_dict().copy()
+            for aux_param, instructions in full_space_instructions.items():
+                full_params_dict[aux_param] = 1.0 - np.sum(
+                    [func_params[p] for p in instructions]
+                )
+            full_batch_params.append(
+                ParameterVector().from_dict(
+                    full_params_dict, param_space=full_param_space
+                )
+            )
+
+        return full_batch_params
+
+
+    def get_param_space(
+        self, campaign_config: Dict[Any, Any],
+    ) -> Tuple[ParameterSpace, ParameterDiscrete, Dict[str, List[str]]]:
+        """Generate Olympus ParameterSpace object based on the supplied
+        configuration for the parameters
+        """
+        full_space_instructions = {}
+        func_param_space = ParameterSpace()
+        full_param_space = ParameterSpace()
+        prep = campaign_config["preparation"]
+        drug_names = [p for p in prep.keys() if prep[p]["type"] == "drug"]
+        lipid_names = [p for p in prep.keys() if prep[p]["type"] == "lipid"]
+        solvent_names = [p for p in prep.keys() if prep[p]["type"] == "solvent"]
+
+        for component in drug_names + lipid_names:
+            if prep[component]["levels"]:
+                # we have levels --> functional parameter
+                param_to_add = ParameterDiscrete(
+                    name=component, options=prep[component]["levels"]
+                )
+                func_param_space.add(param_to_add)
+                full_param_space.add(param_to_add)
+            else:
+                # no levels, non-functional parameter
+                param_to_add = ParameterContinuous(
+                    name=component,
+                    low=0.0,
+                    high=1.0,
+                )
+                full_param_space.add(param_to_add)
+                # add instructions, list of parameter names that dictate value
+                full_space_instructions[component] = prep[component][
+                    "fractional_range"
+                ]
+
+        return func_param_space, full_param_space, full_space_instructions
+
+
+    def get_value_space(self, campaign_config: Dict[Any, Any]) -> ParameterSpace:
+        """Generate Olympus ParameterSpace object based on the supplied
+        configuration for the objectives
+        """
+        objectives = campaign_config["objectives"]
+        value_space = ParameterSpace()
+        for obj in objectives.keys():
+            value_space.add(ParameterContinuous(name=objectives[obj]["name"]))
+        return value_space
+
 
     def set_campaign(self):
         # functional campaign
@@ -199,7 +273,7 @@ class Orchestrator:
             func_batch_params = self.planner.recommend(obs_for_planner)
 
             # convert the samples to the "full" parameter space
-            full_batch_params = func_to_full_params(
+            full_batch_params = self.func_to_full_params(
                 func_batch_params,
                 self.full_param_space,
                 self.full_space_instructions,

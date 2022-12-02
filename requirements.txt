@@ -1,4 +1,4 @@
-botorch==0.6.3.1
+botorch
 matter-chimera
 scikit-learn
 scipy
@@ -15,6 +15,5 @@ silence-tensorflow
 deap
 rich
 pytest
-git+https://github.com/aspuru-guzik-group/olympus.git@dev
 pytest-cov
 gspread
