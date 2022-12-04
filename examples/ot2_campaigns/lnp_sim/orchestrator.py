@@ -11,9 +11,10 @@ from olympus.objects import ParameterVector
 
 from atlas import Logger
 from atlas.optimizers.gp.planner import BoTorchPlanner
-from atlas.ot2.example_protocols.manager import ProtocolManager
 from atlas.ot2.volume_converter import *
 from atlas.sheets.sheet_manager import SheetManager
+
+from ot2_control.protocols.manager import ProtocolManager
 
 
 class Orchestrator:

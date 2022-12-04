@@ -1,4 +1,4 @@
-!/usr/bin/env python
+#!/usr/bin/env python
 
 import itertools
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union

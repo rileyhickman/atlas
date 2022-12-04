@@ -37,13 +37,13 @@ general:
   grid_dims:
     rows: 4
     cols: 6
-  target_hexcode: "#7d43ff"
+  target_hexcode: "#FFFF00"
   save_img_path: './run_imgs/'
 protocol:
   name: "color_mixing"
-  custom_labware_path: "/path/to/file"
   simulation: True  # wheter or not to simulate the opentrons protocol
   ot2_name: null  # ot2 name
+  dest_path: '/data/user_storage/' # ot2 destination path with write permissions
   ot2_connection: "wireless"  # ot2 connection type: "wired" or "wireless"
   ot2_wired_ip: "169.254.121.85"  # ot2 wired (usb) address
   ot2_wireless_ip: "192.168.0.168" # ot2 wireless address

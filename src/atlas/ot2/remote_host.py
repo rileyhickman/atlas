@@ -9,7 +9,7 @@ from paramiko.auth_handler import AuthenticationException, SSHException
 from scp import SCPClient, SCPException
 from socket import error as socket_error
 
-from ot2_control import Logger
+from atlas import Logger
 
 
 class ExampleException(Exception):
@@ -37,18 +37,22 @@ class Host(object):
                 key_filename=self.key_filename,
             )
 
-    def run_command(self, command:str):
-        msg = f'Running {command} on OT-2 robot @ {self.hostname}'
-        Logger.log(msg, 'INFO')
-        stdin, stdout, stderr = self.ssh_client.exec_command(command)
+    def run_command(self, command:str, return_info=False):
+        try:
+            msg = f'Running {command} on OT-2 robot @ {self.hostname}'
+            Logger.log(msg, 'INFO')
+            stdin, stdout, stderr = self.ssh_client.exec_command(command)
 
-        Logger.log('Command stdout...', 'INFO')
-        for line in stdout.readlines():
-            print(line)
+            Logger.log('Command stdout...', 'INFO')
+            for line in stdout.readlines():
+                print(line)
+            if return_info:
+                return stdin,stdout,stderr
 
-        # except (socket_error, AuthenticationException) as exc:
-        #     #self._raise_authentication_err(exc)
-        return stdin,stdout,stderr
+        except (socket_error, AuthenticationException) as exc:
+            self._raise_authentication_err(exc)
+            if return_info:
+                return stdin,stdout,stderr
 
 
 
@@ -63,11 +67,16 @@ class Host(object):
         )
 
 
-    def put_file(self, source_path:str, dest_path:str):
-        self.scp_client.put(source_path, remote_path=dest_path, recursive=True)
+    def put_file(self, source_path:str, dest_path:str, recursive=False):
+        self.scp_client.put(source_path, remote_path=dest_path, recursive=recursive)
 
-    def get_file(self, source_file:str, dest_path:str):
-        self.scp_client.get(source_file, local_path=dest_path, preserve_times=True)
+    def get_file(self, source_file:str, dest_path:str, recursive=False):
+        self.scp_client.get(
+            source_file, 
+            local_path=dest_path, 
+            recursive=recursive,
+            preserve_times=True,
+        )
 
 
     def remove_remote_file(self, dest_path:str, is_dir:bool=False):

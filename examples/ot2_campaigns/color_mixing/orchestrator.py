@@ -3,6 +3,7 @@
 import os, sys
 import pickle
 import time
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -17,9 +18,11 @@ from olympus.objects import (
 )
 from olympus.utils.data_transformer import cube_to_simpl
 
+from ot2_control.protocols.manager import ProtocolManager
+
 from atlas import Logger
 from atlas.optimizers.gp.planner import BoTorchPlanner
-from atlas.ot2.example_protocols.manager import ProtocolManager
+from atlas.ot2.remote_host import Host
 from atlas.ot2.cv import Camera
 
 
@@ -27,7 +30,6 @@ class Orchestrator:
 	''' High-level orchestrator for the color optimization 
 	experiment with the OT-2 robot
 	''' 
-
 	def __init__(self, config_file:str):
 		Logger.log_welcome()
 		if os.path.isfile(config_file):
@@ -35,6 +37,13 @@ class Orchestrator:
 			self.config = yaml.full_load(content)
 		else:
 			Logger.log(f"File {config_file} does not exist", "FATAL")
+
+		# generate directory for the campaign
+		now = datetime.now()
+		camp_name = self.config["protocol"]["name"]
+		self.campaign_dir = f'camp_{camp_name}_{now.year}-{now.month}-{now.day}/'
+		os.makedirs(self.campaign_dir, exist_ok=False)
+
 
 		self.BATCH_SIZE = self.config["general"]["batch_size"]
 		self.BUDGET = self.config["general"]["budget"]
@@ -54,14 +63,19 @@ class Orchestrator:
 
 		self.set_planner()
 
-		self.camera = Camera(
-				grid_dims=(
-					self.config['general']['grid_dims']['rows'],
-					self.config['general']['grid_dims']['cols']
-					),
-				save_img_path=self.config['general']['save_img_path'],
+
+		Logger.log_chapter(
+			"Initializing SSH connection to OT-2 robot",
+			line="=",
+			style="bold #d9ed92",
 		)
 
+		self.host = Host(
+			hostname='192.168.0.168', 
+			username='root', 
+			key_filename='/Users/rileyhickman/.ssh/id_rsa',
+		)
+		self.dest_path = self.config['protocol']['dest_path']
 
 
 	def set_campaign(self):
@@ -138,10 +152,11 @@ class Orchestrator:
 			goal = self.config['objs']['loss']['goal'],
 			batch_size=self.BATCH_SIZE,
 			init_design_strategy='random',
-			num_init_design=1,
+			num_init_design=3,
 		)
 		self.planner.set_param_space(self.func_param_space)
 	
+
 	def instantiate_protocol_manager(self, parameters):
 
 		protocol_config=self.config['protocol']
@@ -150,6 +165,46 @@ class Orchestrator:
 			protocol_parameters=parameters
 		)
 		return protocol_manager
+
+
+	def execute_protocol(self):
+		'''Run the protocol on the OT2 server with optional preceeding simulation '''
+		protocol_name = self.config['protocol']['name']
+		filename = f"__OT2_file_{protocol_name}.py"
+		if simulation:
+			# execute simulation to assure there are no bugs in the parameterized OT-2 protocol
+			msg = f'Simulation of OT2 protocol "{self.protocol_name}" requested. Executing simulation with `opentrons_simulate {filename}`'
+			Logger.log(msg, "WARNING")
+			result = subprocess.run(
+				f"opentrons_simulate {filename}",
+				capture_output=True,
+				shell=True,
+			)
+			# TODO: parse the results of the simulation (# results.stderr)
+			if True:
+				Logger.log(
+					f'Simualtion of OT2 protocol "{protocol_name}" finished successfully',
+					"INFO",
+				)
+			else:
+				Logger.log(
+					f'Simulation of OT2 protocol "{protocol_name}" failed!',
+					"FATAL",
+				)
+
+		# copy the file to the OT-2 and execute it there
+		self.host.put_file(filename, dest_path=self.dest_path)
+
+		time.sleep(0.5)
+		# TODO: update this for production
+		# self.host.run_command(command=f'opentrons_execute {dest_path}{filename}')
+		stdin, stdout, stderr = self.host.run_command(
+			command=f'opentrons_simulate {self.dest_path}{filename}',
+			return_info=True
+		)
+		
+
+
 
 
 	def orchestrate(self):
@@ -173,7 +228,7 @@ class Orchestrator:
 		Logger.log_chapter(
 			"Commencing experiment", line="=", style="bold #d9ed92"
 		)
-		iteration = 0
+		iteration = 1
 		num_batches = 0
 		while len(self.func_campaign.observations.get_values()) < self.BUDGET:
 
@@ -185,6 +240,22 @@ class Orchestrator:
 				style="cyan",
 			)
 
+			# make directory to store the results of the iteration
+			iter_dir = f'{self.campaign_dir}iter_{iteration}/'
+			os.makedirs(iter_dir, exist_ok=False)
+
+
+			# instantiate webcam object powered by opencv
+			self.camera = Camera(
+					grid_dims=(
+							self.config['general']['grid_dims']['rows'],
+							self.config['general']['grid_dims']['cols']
+						),
+					save_img_path=iter_dir,
+					hough_config={}
+				)
+
+
 			func_batch_params = self.planner.recommend(self.func_campaign.observations)
 
 			transfer_volumes, full_batch_params = self.compute_volumes(func_batch_params)
@@ -194,7 +265,7 @@ class Orchestrator:
 			print('\nTRANSFER VOLUMES : ', transfer_volumes)
 			print('\n')
 
-			# add iteration number to parameters 
+			# add iteration number and target hexcode to parameters 
 			transfer_volumes['iteration'] = iteration
 			
 			protocol_manager = self.instantiate_protocol_manager(
@@ -202,24 +273,41 @@ class Orchestrator:
 			)
 			protocol_manager.spawn_protocol_file()
 
+		
+			filename='__OT2_file_color_mixing.py'
 
-			# execute the color mixing i.e. sample prep
-			protocol_manager.execute_protocol(
-				simulation=self.config["protocol"]["simulation"]
+			_ = self.host.put_file(filename, dest_path=self.dest_path)
+
+			time.sleep(0.5)
+
+			self.host.run_command(
+				command=f'cat {self.dest_path}{filename} {self.dest_path}abstract_protocol.txt {self.dest_path}protocol.txt >> {self.dest_path}test.py'
 			)
 
-			# when the sample prep has finished, take a picture with the webcam 
-			# and measure the loss function value
+			# execute the color mixing i.e. sample prep + measurement of loss with the
+			# webcam and opencv
+			# self.execute_protocol(simulation=self.config['protocol']['simulation'])
+			# TODO: manually submit protocol on the opentrons OT-2
+			input("Press Enter once OT-2 protocol is complete...") 
 
-			loss, _ = self.camera.make_measurement(
+			print('Removing files...')
+			self.host.remove_remote_file(dest_path=f'{self.dest_path}{filename}', is_dir=False)
+			self.host.remove_remote_file(dest_path=f'{self.dest_path}test.py', is_dir=False)
+
+			# take a picture with the webcam and measure the loss 
+			# and save image 
+			loss, avg_meas_rgb = self.camera.make_measurement(
 				iteration=iteration, 
-				target_rgb = Camera.hex_to_rgb(
-						self.config['general']['target_hexcode']
-				),
+				target_rgb=Camera.hex_to_rgb(self.config['general']["target_hexcode"]),
 				save_img=True,
 			)
-			# loss = np.random.uniform(1, 1000)
 
+			# add the results the of the experiment to the parameter directory 
+			# and save to disk
+			transfer_volumes['loss']=loss
+			transfer_volumes['avg_meas_rgb']=avg_meas_rgb
+			pickle.dump(transfer_volumes, open(f'{iter_dir}parameters.pkl', 'wb'))
+		
 			print('\nLOSS : ', loss)
 			print('\n')
 
@@ -230,11 +318,11 @@ class Orchestrator:
 			# save to disk
 			pickle.dump(
 				[self.func_campaign,self.full_campaign],
-				open(self.config['general']['save_img_path']+'results.pkl','wb')
+				open(self.campaign_dir+'results.pkl','wb')
 			)
 
 			iteration += 1
-			num_batches+=1
+			num_batches += 1
 
 
 
@@ -242,24 +330,6 @@ class Orchestrator:
 
 if __name__ == '__main__':
 
-	runner = Orchestrator(config_file='color_opt_config.yaml')
+	runner = Orchestrator(config_file='config.yaml')
 
 	runner.orchestrate()
-
-
-
-	
-
-
-
-
-
-
-
-
-
-
-
-
-
-
