@@ -322,7 +322,7 @@ class FeasibilityAwareUCB(UpperConfidenceBound):
         infeas_ratio,
         acqf_min_max,
         use_p_feas_only=False,
-        beta=torch.tensor([0.2]), 
+        beta=torch.tensor([0.2]),
         objective=None,
         maximize=False,
         **kwargs,
@@ -332,15 +332,15 @@ class FeasibilityAwareUCB(UpperConfidenceBound):
         self.cla_model = cla_model
         self.cla_likelihood = cla_likelihood
         self.param_space = param_space
-        self.best_f = best_f 
-        self.feas_strategy = feas_strategy 
+        self.best_f = best_f
+        self.feas_strategy = feas_strategy
         self.feas_param = feas_param
         self.feas_strategy = feas_strategy
         self.feas_param = feas_param
         self.infeas_ratio = infeas_ratio
-        self.acqf_min_max = acqf_min_max 
+        self.acqf_min_max = acqf_min_max
         self.use_p_feas_only = use_p_feas_only
-        self.beta = beta 
+        self.beta = beta
         self.objective = objective
         self.maximize = maximize
 

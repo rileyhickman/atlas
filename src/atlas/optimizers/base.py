@@ -65,7 +65,7 @@ class BasePlanner(CustomPlanner):
         self,
         goal: str,
         feas_strategy: Optional[str] = "naive-0",
-        feas_param: Optional[str] = 0.2,
+        feas_param: Optional[float] = 0.2,
         batch_size: int = 1,
         random_seed: Optional[int] = None,
         use_descriptors: bool = False,

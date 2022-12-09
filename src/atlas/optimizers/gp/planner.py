@@ -88,7 +88,7 @@ class BoTorchPlanner(BasePlanner):
         self,
         goal: str,
         feas_strategy: Optional[str] = "naive-0",
-        feas_param: Optional[str] = 0.2,
+        feas_param: Optional[float] = 0.2,
         batch_size: int = 1,
         random_seed: Optional[int] = None,
         use_descriptors: bool = False,
@@ -318,7 +318,7 @@ class BoTorchPlanner(BasePlanner):
                         infeas_ratio,
                         acqf_min_max,
                     )
-                elif batch_size > 1:
+                elif self.batch_size > 1:
                     if self.problem_type == "fully_continuous":
                         acqf_object = FeasibilityAwareQEI
                     else:
@@ -345,7 +345,7 @@ class BoTorchPlanner(BasePlanner):
                     self.feas_strategy,
                     self.feas_param,
                     infeas_ratio,
-                    acqf_min_max,   
+                    acqf_min_max,
                     beta=torch.tensor([0.2]).repeat(self.batch_size),
                 )
 
