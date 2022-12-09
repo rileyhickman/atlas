@@ -523,7 +523,7 @@ def run_mixed_cat_disc_cont(
 if __name__ == "__main__":
     # pass
     # run_discrete('random')
-    run_continuous("lhs", 5, False)
+    run_continuous("lhs", 1, False)
     # run_categorical_ohe('random')
     # run_categorical_desc('random')
     # run_mixed_cat_disc('random')

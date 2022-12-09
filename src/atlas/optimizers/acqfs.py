@@ -7,7 +7,7 @@ import gpytorch
 import numpy as np
 import pandas as pd
 import torch
-from botorch.acquisition import AcquisitionFunction, ExpectedImprovement
+from botorch.acquisition import AcquisitionFunction, ExpectedImprovement, UpperConfidenceBound
 from botorch.acquisition.monte_carlo import (
     qExpectedImprovement,
     qNoisyExpectedImprovement,
@@ -305,6 +305,93 @@ class FeasibilityAwareEI(ExpectedImprovement):
                 return acqf
         else:
             raise NotImplementedError
+
+
+
+class FeasibilityAwareUCB(UpperConfidenceBound):
+
+    def __init__(
+        self,
+        reg_model,
+        cla_model,
+        cla_likelihood,
+        param_space,
+        best_f,
+        feas_strategy,
+        feas_param,
+        infeas_ratio,
+        acqf_min_max,
+        use_p_feas_only=False,
+        beta=torch.tensor([0.2]), 
+        objective=None,
+        maximize=False,
+        **kwargs,
+    ) -> None:
+        super().__init__(reg_model, beta, maximize=maximize, **kwargs)
+        self.reg_model = reg_model
+        self.cla_model = cla_model
+        self.cla_likelihood = cla_likelihood
+        self.param_space = param_space
+        self.best_f = best_f 
+        self.feas_strategy = feas_strategy 
+        self.feas_param = feas_param
+        self.feas_strategy = feas_strategy
+        self.feas_param = feas_param
+        self.infeas_ratio = infeas_ratio
+        self.acqf_min_max = acqf_min_max 
+        self.use_p_feas_only = use_p_feas_only
+        self.beta = beta 
+        self.objective = objective
+        self.maximize = maximize
+
+    def forward(self, X):
+
+        acqf = super().forward(X)  # get the EI acquisition
+        # approximately normalize the EI acquisition function
+        acqf = (acqf - self.acqf_min_max[0]) / (
+            self.acqf_min_max[1] - self.acqf_min_max[0]
+        )
+        # p_feas should be 1 - P(infeasible|X) because EI is
+        # maximized by default
+        if not "naive-" in self.feas_strategy:
+            p_feas = 1.0 - self.compute_feas_post(X)
+        else:
+            p_feas = 1.0
+
+        return self.compute_combined_acqf(acqf, p_feas)
+
+    def compute_feas_post(self, X):
+        """computes the posterior P(infeasible|X)
+        Args:
+                X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
+        """
+        with gpytorch.settings.cholesky_jitter(1e-1):
+            return self.cla_likelihood(
+                self.cla_model(X.float().squeeze(1))
+            ).mean
+
+    def compute_combined_acqf(self, acqf, p_feas):
+        """compute the combined acqusition function"""
+        if self.feas_strategy == "fwa":
+            return acqf * p_feas
+        elif self.feas_strategy == "fca":
+            return acqf
+        elif self.feas_strategy == "fia":
+            return ((1.0 - self.infeas_ratio**self.feas_param) * acqf) + (
+                (self.infeas_ratio**self.feas_param) * (p_feas)
+            )
+        elif "naive-" in self.feas_strategy:
+            if self.use_p_feas_only:
+                return p_feas
+            else:
+                return acqf
+        else:
+            raise NotImplementedError
+
+
+
+
+
 
 
 def get_batch_initial_conditions(

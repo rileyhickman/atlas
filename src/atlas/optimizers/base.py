@@ -71,6 +71,7 @@ class BasePlanner(CustomPlanner):
         use_descriptors: bool = False,
         num_init_design: int = 5,
         init_design_strategy: str = "random",
+        acquisition_type: str = 'ei',  # ei, ucb
         acquisition_optimizer_kind: str = "gradient",  # gradient, genetic
         vgp_iters: int = 2000,
         vgp_lr: float = 0.1,
@@ -97,6 +98,7 @@ class BasePlanner(CustomPlanner):
         self.use_descriptors = use_descriptors
         self.num_init_design = num_init_design
         self.init_design_strategy = init_design_strategy
+        self.acquisition_type = acquisition_type
         self.acquisition_optimizer_kind = acquisition_optimizer_kind
         self.vgp_iters = vgp_iters
         self.vgp_lr = vgp_lr
@@ -266,8 +268,6 @@ class BasePlanner(CustomPlanner):
             params_reg = self._params[feas_ix].reshape(-1, 1)
             train_y_reg = self._values[feas_ix].reshape(-1, 1)
 
-        print(train_y_cla)
-        print(train_y_reg)
 
         train_x_cla, train_x_reg = [], []
 

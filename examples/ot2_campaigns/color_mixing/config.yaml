@@ -14,15 +14,15 @@ params:
     type: "continuous"
     low: 0.0
     high: 1.0
-  green:
-    name: "green"
-    type: "continuous"
-    low: null
-    high: null
-    set_wrt:
-      - "red"
-      - "green"
-      - "blue"
+  # green:
+  #   name: "green"
+  #   type: "continuous"
+  #   low: null
+  #   high: null
+  #   set_wrt:
+  #     - "red"
+  #     - "green"
+  #     - "blue"
 objs:
   loss:
     name: "loss"
@@ -31,9 +31,9 @@ objs:
 general:
   batch_size: 1
   volume_prec: 0
-  budget: 10
+  budget: 20
   timeout: 3600
-  total_volume: 600.0  # uL
+  total_volume: 800.0  # uL
   grid_dims:
     rows: 4
     cols: 6

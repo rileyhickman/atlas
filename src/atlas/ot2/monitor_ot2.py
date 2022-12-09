@@ -54,7 +54,6 @@ class Monitor:
         return protocol_parameters
 
     def execute(self, protocol_parameters):
-
         self.write_protocol_file(protocol_parameters)
 
         # join files
@@ -63,10 +62,13 @@ class Monitor:
         )
 
         # execute the protocol on the OT-2
-        os.system("opentrons_execute test.py")
+        #os.system("opentrons_execute test.py")
+        os.system("opentrons_simulate test.py")
 
-        # once the protocol has finished, clean up the directory
-        os.system(f"rm __OT2_file_{self.protocol_name}.py test.py")
+        # once the protocol has finished, clean up the directories
+        os.system(f"rm __OT2_file_{self.protocol_name}.py test.py {self.pickup_dir}params.pkl")
+
+
 
     def write_protocol_file(self, protocol_parameters):
         s = "#!/usr/bin/env python\n"
@@ -90,8 +92,16 @@ class Monitor:
 if __name__ == "__main__":
 
     monitor = Monitor(
-        pickup_dir="pickup_dummy/",
+        pickup_dir="test_dir/",
         protocol_name="dummy",
         monitor_interval=2.0,
         timeout=3600.0,
     )
+
+    while True:
+        params = monitor.monitor()
+        print('PARAMS : ', params)
+        monitor.execute(params)
+
+
+

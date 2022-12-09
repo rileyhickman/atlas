@@ -14,7 +14,7 @@ from atlas.optimizers.gp.planner import BoTorchPlanner
 from atlas.ot2.volume_converter import *
 from atlas.sheets.sheet_manager import SheetManager
 
-from ot2_control.protocols.manager import ProtocolManager
+from ot2_control.protocols.manager_dummy import ProtocolManager
 
 
 class Orchestrator:
@@ -253,10 +253,10 @@ class Orchestrator:
 
             # print('CAMPAIGN OBS : ', self.full_campaign.observations.get_params())
             vals = self.full_campaign.observations.get_values()
-            print([np.isnan(v[0]) for v in vals])
-            print(
-                "CAMPAIGN OBS : ", self.full_campaign.observations.get_values()
-            )
+            # print([np.3isnan(v[0]) for v in vals])
+            # print(
+            #     "CAMPAIGN OBS : ", self.full_campaign.observations.get_values()
+            # )
 
             num_obs = len(self.func_campaign.observations.get_values())
 

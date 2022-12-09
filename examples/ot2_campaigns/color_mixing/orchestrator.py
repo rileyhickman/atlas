@@ -125,8 +125,9 @@ class Orchestrator:
 
     def compute_volumes(self, func_params):
         # func_params are just red, yellow, blue
-        func_params_arr = [p.to_array() for p in func_params]
-        full_params_arr = cube_to_simpl(func_params_arr)
+        func_params_arr = func_params[0].to_array() 
+
+        full_params_arr = np.array([func_params_arr / np.sum(func_params_arr)])
 
         full_params = [
             ParameterVector().from_array(i, param_space=self.full_param_space)
@@ -145,7 +146,7 @@ class Orchestrator:
             goal=self.config["objs"]["loss"]["goal"],
             batch_size=self.BATCH_SIZE,
             init_design_strategy="random",
-            num_init_design=3,
+            num_init_design=4,
         )
         self.planner.set_param_space(self.func_param_space)
 
@@ -249,6 +250,9 @@ class Orchestrator:
                 func_batch_params
             )
 
+            
+            print('\nPROPOSED FUNC PARAMS : ', func_batch_params)
+
             print("\nPROPOSED PARAMS : ", full_batch_params)
 
             print("\nTRANSFER VOLUMES : ", transfer_volumes)
@@ -257,34 +261,28 @@ class Orchestrator:
             # add iteration number and target hexcode to parameters
             transfer_volumes["iteration"] = iteration
 
-            protocol_manager = self.instantiate_protocol_manager(
-                parameters=transfer_volumes
-            )
-            protocol_manager.spawn_protocol_file()
+            # protocol_manager = self.instantiate_protocol_manager(
+            #     parameters=transfer_volumes
+            # )
+            # protocol_manager.spawn_protocol_file()
+
+            # write the parameters to a pickle file
+            pickle.dump(transfer_volumes, open('params.pkl', 'wb'))
 
             filename = "__OT2_file_color_mixing.py"
 
-            _ = self.host.put_file(filename, dest_path=self.dest_path)
+            _ = self.host.put_file('params.pkl', dest_path=self.dest_path+'pickup_dir/')
 
             time.sleep(0.5)
 
-            self.host.run_command(
-                command=f"cat {self.dest_path}{filename} {self.dest_path}abstract_protocol.txt {self.dest_path}protocol.txt >> {self.dest_path}test.py"
-            )
-
             # execute the color mixing i.e. sample prep + measurement of loss with the
             # webcam and opencv
-            # self.execute_protocol(simulation=self.config['protocol']['simulation'])
-            # TODO: manually submit protocol on the opentrons OT-2
+        
             input("Press Enter once OT-2 protocol is complete...")
 
             print("Removing files...")
-            self.host.remove_remote_file(
-                dest_path=f"{self.dest_path}{filename}", is_dir=False
-            )
-            self.host.remove_remote_file(
-                dest_path=f"{self.dest_path}test.py", is_dir=False
-            )
+
+            os.system('rm params.pkl')
 
             # take a picture with the webcam and measure the loss
             # and save image
@@ -295,6 +293,9 @@ class Orchestrator:
                 ),
                 save_img=True,
             )
+
+            # loss = 100
+            # avg_meas_rgb = [111, 200, 233]
 
             # add the results the of the experiment to the parameter directory
             # and save to disk
