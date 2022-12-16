@@ -49,7 +49,7 @@ CAT = {
 @pytest.mark.parametrize("batch_size", CONT["batch_size"])
 @pytest.mark.parametrize("feas_strategy_param", CONT["feas_strategy_param"])
 @pytest.mark.parametrize("use_descriptors", CONT["use_descriptors"])
-def test_init_design_cont(init_design_strategy, batch_size, feas_strategy_param, use_descriptors):
+def test_unknown_cont(init_design_strategy, batch_size, feas_strategy_param, use_descriptors):
     run_continuous(init_design_strategy, batch_size, feas_strategy_param, use_descriptors)
 
 
@@ -57,7 +57,7 @@ def test_init_design_cont(init_design_strategy, batch_size, feas_strategy_param,
 @pytest.mark.parametrize("batch_size", CAT["batch_size"])
 @pytest.mark.parametrize("feas_strategy_param", CAT["feas_strategy_param"])
 @pytest.mark.parametrize("use_descriptors", CAT["use_descriptors"])
-def test_init_design_cont(init_design_strategy, batch_size, feas_strategy_param, use_descriptors):
+def test_unknown_cat(init_design_strategy, batch_size, feas_strategy_param, use_descriptors):
     run_categorical(init_design_strategy, batch_size, feas_strategy_param, use_descriptors)
 
 
