@@ -15,6 +15,7 @@ from botorch.acquisition import (
     ExpectedImprovement,
     qExpectedImprovement,
     qNoisyExpectedImprovement,
+    UpperConfidenceBound,
 )
 from botorch.fit import fit_gpytorch_model
 from botorch.models import MixedSingleTaskGP, SingleTaskGP
@@ -36,6 +37,8 @@ from atlas.optimizers.acqfs import (
     FeasibilityAwareUCB,
     FeasibilityAwareGeneral,
     FeasibilityAwareQEI,
+    VarianceBased,
+    FeasibilityAwareVarainceBased,
     create_available_options,
     get_batch_initial_conditions,
 )
@@ -350,12 +353,21 @@ class BoTorchPlanner(BasePlanner):
                     acqf_min_max,
                     beta=torch.tensor([0.2]).repeat(self.batch_size),
                 )
-
+            elif self.acquisition_type == 'variance':
+                self.acqf = FeasibilityAwareVarainceBased(
+                    self.reg_model,
+                    self.cla_model,
+                    self.cla_likelihood,
+                    self.param_space,
+                    f_best_scaled,
+                    self.feas_strategy,
+                    self.feas_param,
+                    infeas_ratio,
+                    acqf_min_max,
+                )
             else:
                 msg = f'Acquisition function type {self.acquisition_type} not understood!'
                 Logger.log(msg, 'FATAL')
-
-
 
             # optimize acquisition function
             acquisition_optimizer = AcquisitionOptimizer(
@@ -382,16 +394,20 @@ class BoTorchPlanner(BasePlanner):
         the feasibility contribution. These values will be used to approximately
         normalize the acquisition function
         """
-        if self.batch_size == 1:
+        if self.acquisition_type == 'ei':
             acqf = ExpectedImprovement(
                 reg_model, f_best_scaled, objective=None, maximize=False
             )
-        elif self.batch_size > 1:
-            acqf = qExpectedImprovement(
-                reg_model, f_best_scaled, objective=None, maximize=False
+
+        elif self.acquisition_type == 'ucb':
+            acqf = UpperConfidenceBound(
+                reg_model, beta=torch.tensor([0.2]).repeat(self.batch_size), objective=None, maximize=False
             )
+        elif self.acquisition_type == 'variance':
+            acqf = VarianceBased(reg_model)
+
         samples, _ = propose_randomly(
-            num_samples, self.param_space, self.has_descriptors
+            num_samples, self.param_space, self.has_descriptors,
         )
         # if not self.problem_type=='fully_categorical' and not self.has_descriptors:
         # 	# we dont scale the parameters if we have a one-hot-encoded representation

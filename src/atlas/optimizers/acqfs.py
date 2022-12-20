@@ -20,10 +20,102 @@ from atlas.optimizers.utils import (
     propose_randomly,
 )
 
+class VarianceBased(AcquisitionFunction):
+    """ Variance-based sampling (active learning)
+    """
+    def __init__(self, reg_model, **kwargs):
+        super().__init__(reg_model, **kwargs)
+        self.reg_model = reg_model
+
+    def forward(self, X):
+        posterior = self.reg_model.posterior(X.double())
+        sigma = posterior.variance.clamp_min(1e-9).sqrt()
+        view_shape = sigma.shape[:-2] if sigma.shape[-2] == 1 else sigma.shape[:-1]
+
+        return sigma.view(view_shape)
+
+
+
+class FeasibilityAwareVarainceBased(VarianceBased):
+    """ Feasibility aware variance-based sampling (active learning)
+    """
+
+    def __init__(
+        self,
+        reg_model,
+        cla_model,
+        cla_likelihood,
+        param_space,
+        best_f,
+        feas_strategy,
+        feas_param,
+        infeas_ratio,
+        acqf_min_max,
+        use_p_feas_only=False,
+        objective=None,
+        maximize=False,
+        **kwargs,
+    ) -> None:
+        super().__init__(reg_model, **kwargs)
+        self.best_f = best_f
+        self.reg_model = reg_model
+        self.cla_model = cla_model
+        self.cla_likelihood = cla_likelihood
+        self.param_space = param_space
+        self.feas_strategy = feas_strategy
+        self.feas_param = feas_param
+        self.infeas_ratio = infeas_ratio
+        self.acqf_min_max = acqf_min_max
+        self.use_p_feas_only = use_p_feas_only
+        self.maximize = maximize
+
+
+    def forward(self, X):
+        acqf = super().forward(X)
+        acqf = (acqf - self.acqf_min_max[0]) / (
+            self.acqf_min_max[1] - self.acqf_min_max[0] # normalize sigma value
+        )
+
+        if not "naive-" in self.feas_strategy:
+            p_feas = 1.0 - self.compute_feas_post(X)
+        else:
+            p_feas = 1.0
+
+        return self.compute_combined_acqf(acqf, p_feas)
+
+
+    def compute_feas_post(self, X):
+        """computes the posterior P(feasible|X)
+        Args:
+                X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
+        """
+        with gpytorch.settings.cholesky_jitter(1e-1):
+            return self.cla_likelihood(
+                self.cla_model(X.float().squeeze(1))
+            ).mean
+
+    def compute_combined_acqf(self, acqf, p_feas):
+        """compute the combined acqusition function"""
+        if self.feas_strategy == "fwa":
+            return acqf * p_feas
+        elif self.feas_strategy == "fca":
+            return acqf
+        elif self.feas_strategy == "fia":
+            return ((1 - self.infeas_ratio) ** self.feas_param * acqf) + (
+                (self.infeas_ratio**self.feas_param) * (1 - p_feas)
+            )
+        elif "naive-" in self.feas_strategy:
+            if self.use_p_feas_only:
+                return p_feas
+            else:
+                return acqf
+        else:
+            raise NotImplementedError
+
 
 class FeasibilityAwareGeneral(AcquisitionFunction):
     """Abstract feasibilty aware general purpose optimization acquisition function.
-    Compatible
+
 
     """
 
@@ -386,8 +478,6 @@ class FeasibilityAwareUCB(UpperConfidenceBound):
                 return acqf
         else:
             raise NotImplementedError
-
-
 
 
 

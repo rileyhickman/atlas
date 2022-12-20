@@ -77,11 +77,11 @@ def run_continuous(
 
     planner = BoTorchPlanner(
         goal="minimize",
-        feas_strategy="fca",
-        feas_param=0.2,
+        feas_strategy="naive-0",
         init_design_strategy=init_design_strategy,
         num_init_design=num_init_design,
         batch_size=batch_size,
+        acquisition_type='variance',
         acquisition_optimizer_kind='genetic',
         known_constraints=[known_constraints_cont],
     )
@@ -197,7 +197,7 @@ def run_mixed_cat_disc_cont(
         num_init_design=num_init_design,
         batch_size=batch_size,
         use_descriptors=use_descriptors,
-        acquisition_optimizer_kind='genetic',
+        acquisition_optimizer_kind='gradient',
     )
 
     planner.set_param_space(param_space)

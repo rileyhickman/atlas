@@ -159,6 +159,7 @@ class GeneticOptimizer:
             sample = []
             counter = 0
             for elem, p in zip(x_, self.param_space):
+
                 if p.type == 'continuous':
                     sample.append(float(elem))
                     counter+=1
@@ -176,6 +177,7 @@ class GeneticOptimizer:
 
 
     def acquisition(self, x: np.ndarray) -> Tuple:
+
         x = self.deindexify(x.reshape((1, x.shape[0])))
         x = torch.tensor(
             x.reshape((1, self.batch_size, x.shape[1]))
@@ -324,6 +326,10 @@ class GeneticOptimizer:
 
         # select best recommendations and return them as param vectors
         acqf_vals = [self.acquisition(x)[0] for x in np.array(population)]
+        # print(acqf_vals)
+        # print(len(acqf_vals))
+        # print(acqf_vals[0].shape)
+        # quit()
         best_idxs = np.argsort(acqf_vals)[::-1][:self.batch_size]
         best_batch_pop = np.array(population)[best_idxs]
 
