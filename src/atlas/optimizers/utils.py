@@ -171,10 +171,7 @@ def propose_randomly(
                 sample.append(p)
                 raw_sample.append(p)
             elif param.type == "discrete":
-                num_options = int(
-                    ((param.high - param.low) / param.stride) + 1
-                )
-                options = np.linspace(param.low, param.high, num_options)
+                options = param.options
                 p = np.random.choice(options, size=None, replace=False)
                 sample.append(p)
                 raw_sample.append(p)
@@ -236,82 +233,29 @@ def reverse_normalize(
     return data * (max_ - min_) + min_
 
 
-def get_bounds(
-    param_space: ParameterSpace,
-    mins_x: torch.Tensor,
-    maxs_x: torch.Tensor,
-    has_descriptors: bool,
-) -> torch.Tensor:
-    """returns scaled bounds of the parameter space
-    torch tensor of shape (# dims, 2) (low and upper bounds)
-    """
-
-    bounds = []
-    idx_counter = 0
-    for param_ix, param in enumerate(param_space):
-        if param.type == "continuous":
-            b = np.array([param.low, param.high])
-            b = (b - mins_x[idx_counter]) / (
-                maxs_x[idx_counter] - mins_x[idx_counter]
-            )
-            bounds.append(b)
-            idx_counter += 1
-        elif param.type == "discrete":
-            b = np.array([np.amin(param.options), np.amax(param.options)])
-            b = (b - mins_x[idx_counter]) / (
-                maxs_x[idx_counter] - mins_x[idx_counter]
-            )
-            bounds.append(b)
-            idx_counter += 1
-        elif param.type == "categorical":
-            if has_descriptors:
-                for desc_ix in range(len(param.descriptors[0])):
-                    min_ = np.amin(
-                        [
-                            param.descriptors[opt_ix][desc_ix]
-                            for opt_ix in range(len(param.options))
-                        ]
-                    )
-                    max_ = np.amax(
-                        [
-                            param.descriptors[opt_ix][desc_ix]
-                            for opt_ix in range(len(param.options))
-                        ]
-                    )
-                    bounds += [[min_, max_]]
-                idx_counter += len(param.descriptors[0])
-            else:
-                bounds += [[0, 1] for _ in param.options]
-                idx_counter += len(param.options)
-
-    return torch.tensor(np.array(bounds)).T.float()
-
 
 def param_vector_to_dict(
-    param_vector: ParameterVector,
-    param_names: List[str],
-    param_options: List[Union[float, int, str]],
-    param_types: List[str],
+    sample: np.ndarray,
+    param_space: ParameterSpace,
 ) -> Dict[str, Union[float, int, str]]:
     """parse single sample and return a dict"""
     param_dict = {}
-    for param_index, param_name in enumerate(param_names):
-        param_type = param_types[param_index]
-
+    for param_index, param in enumerate(param_space):
+        param_type = param.type
         if param_type == "continuous":
-            param_dict[param_name] = param_vector[param_index]
+            param_dict[param.name] = sample[param_index]
 
         elif param_type == "categorical":
-            options = param_options[param_index]
-            selected_option_idx = int(param_vector[param_index])
+            options = param.options
+            selected_option_idx = int(sample[param_index])
             selected_option = options[selected_option_idx]
-            param_dict[param_name] = selected_option
+            param_dict[param.name] = selected_option
 
         elif param_type == "discrete":
-            options = param_options[param_index]
-            selected_option_idx = int(param_vector[param_index])
+            options = param.options
+            selected_option_idx = int(sample[param_index])
             selected_option = options[selected_option_idx]
-            param_dict[param_name] = selected_option
+            param_dict[param.name] = selected_option
     return param_dict
 
 

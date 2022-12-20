@@ -50,7 +50,7 @@ from atlas.optimizers.utils import (
     flip_source_tasks,
     forward_normalize,
     forward_standardize,
-    get_bounds,
+
     get_cat_dims,
     get_fixed_features_list,
     infer_problem_type,

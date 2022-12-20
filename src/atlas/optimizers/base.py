@@ -39,6 +39,7 @@ from atlas.optimizers.acqfs import (
     create_available_options,
     get_batch_initial_conditions,
 )
+from atlas.optimizers.params import Parameters
 from atlas.optimizers.acquisition_optimizers.base_optimizer import (
     AcquisitionOptimizer,
 )
@@ -50,7 +51,6 @@ from atlas.optimizers.utils import (
     cat_param_to_feat,
     forward_normalize,
     forward_standardize,
-    get_bounds,
     get_cat_dims,
     get_fixed_features_list,
     infer_problem_type,
@@ -293,9 +293,6 @@ class BasePlanner(CustomPlanner):
         train_x_cla, train_x_reg = np.array(train_x_cla), np.array(train_x_reg)
 
         # scale the training data - normalize inputs and standardize outputs
-        # TODO: should we scale all the parameters together?
-        self._mins_x = np.amin(train_x_cla, axis=0)
-        self._maxs_x = np.amax(train_x_cla, axis=0)
 
         self._means_y, self._stds_y = np.mean(train_y_reg, axis=0), np.std(
             train_y_reg, axis=0
@@ -311,10 +308,10 @@ class BasePlanner(CustomPlanner):
         else:
             # scale the parameters
             train_x_cla = forward_normalize(
-                train_x_cla, self._mins_x, self._maxs_x
+                train_x_cla, self.params_obj._mins_x, self.params_obj._maxs_x
             )
             train_x_reg = forward_normalize(
-                train_x_reg, self._mins_x, self._maxs_x
+                train_x_reg, self.params_obj._mins_x, self.params_obj._maxs_x
             )
 
         # always forward transform the objectives for the regression problem
@@ -375,7 +372,7 @@ class BasePlanner(CustomPlanner):
             pass
         else:
             # scale the parameters
-            X_proc = forward_normalize(X_proc, self._mins_x, self._maxs_x)
+            X_proc = forward_normalize(X_proc, self.params_obj._mins_x, self.params_obj._maxs_x)
 
         posterior = self.reg_model.posterior(X=X_proc)
         pred_mu, pred_sigma = posterior.mean.detach(), torch.sqrt(
@@ -432,7 +429,7 @@ class BasePlanner(CustomPlanner):
             pass
         else:
             # scale the parameters
-            X_proc = forward_normalize(X_proc, self._mins_x, self._maxs_x)
+            X_proc = forward_normalize(X_proc, self.params_obj._mins_x, self.params_obj._maxs_x)
 
         likelihood = self.cla_likelihood(self.cla_model(X_proc.float()))
         mean = likelihood.mean.detach()
@@ -483,7 +480,7 @@ class BasePlanner(CustomPlanner):
             pass
         else:
             # scale the parameters
-            X_proc = forward_normalize(X_proc, self._mins_x, self._maxs_x)
+            X_proc = forward_normalize(X_proc, self.params_obj._mins_x, self.params_obj._maxs_x)
 
         acqf_vals = self.acqf(
             X_proc.view(X_proc.shape[0], 1, X_proc.shape[-1])
@@ -506,6 +503,7 @@ class BasePlanner(CustomPlanner):
         Args:
                 observations (obj): Olympus campaign observations object
         """
+
         # elif type(observations) == olympus.campaigns.observations.Observations:
         self._params = observations.get_params(
             as_array=True
@@ -517,6 +515,13 @@ class BasePlanner(CustomPlanner):
         # make values 2d if they are not already
         if len(np.array(self._values).shape) == 1:
             self._values = np.array(self._values).reshape(-1, 1)
+
+        # generate Parameters object
+        self.params_obj = Parameters(
+            olympus_param_space=self.param_space,
+            observations=observations,
+            has_descriptors=self.has_descriptors
+        )
 
     def fca_constraint(self, X: torch.Tensor) -> torch.Tensor:
         """Each callable is expected to take a `(num_restarts) x q x d`-dim tensor as an

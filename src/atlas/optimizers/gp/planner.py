@@ -42,6 +42,7 @@ from atlas.optimizers.acqfs import (
 from atlas.optimizers.acquisition_optimizers.base_optimizer import (
     AcquisitionOptimizer,
 )
+from atlas.optimizers.params import Parameters
 from atlas.optimizers.base import BasePlanner
 from atlas.optimizers.gps import (
     CategoricalSingleTaskGP,
@@ -51,7 +52,6 @@ from atlas.optimizers.utils import (
     cat_param_to_feat,
     forward_normalize,
     forward_standardize,
-    get_bounds,
     get_cat_dims,
     get_fixed_features_list,
     infer_problem_type,
@@ -187,6 +187,7 @@ class BoTorchPlanner(BasePlanner):
                     1  # batch_size always 1 for init design planner
                 )
         else:
+
             # use GP surrogate to propose the samples
             # get the scaled parameters and values for both the regression and classification data
             (
@@ -305,6 +306,7 @@ class BoTorchPlanner(BasePlanner):
             # get the approximate max and min of the acquisition function without the feasibility contribution
             acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled)
 
+
             if self.acquisition_type == 'ei':
                 if self.batch_size==1:
                     self.acqf = FeasibilityAwareEI(
@@ -354,30 +356,17 @@ class BoTorchPlanner(BasePlanner):
                 Logger.log(msg, 'FATAL')
 
 
-            bounds = get_bounds(
-                self.param_space,
-                self._mins_x,
-                self._maxs_x,
-                self.has_descriptors,
-            )
 
-            # -------------------------------
             # optimize acquisition function
-            # -------------------------------
-
             acquisition_optimizer = AcquisitionOptimizer(
                 self.acquisition_optimizer_kind,
-                self.param_space,
+                self.params_obj,
                 self.acqf,
-                bounds,
                 self.known_constraints,
                 self.batch_size,
                 self.feas_strategy,
                 self.fca_constraint,
-                self.has_descriptors,
                 self._params,
-                self._mins_x,
-                self._maxs_x,
             )
             return_params = acquisition_optimizer.optimize()
 
@@ -415,7 +404,7 @@ class BoTorchPlanner(BasePlanner):
             pass
         else:
             # scale the parameters
-            samples = forward_normalize(samples, self._mins_x, self._maxs_x)
+            samples = forward_normalize(samples, self.params_obj._mins_x, self.params_obj._maxs_x)
 
         acqf_vals = acqf(
             torch.tensor(samples)

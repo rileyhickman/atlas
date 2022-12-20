@@ -1,76 +1,218 @@
 #!/usr/bin/env python
 
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import torch
 from deap import base, creator, tools
 from rich.progress import track
 
 from atlas import Logger
 from atlas.optimizers.utils import param_vector_to_dict
 
+from botorch.acquisition import AcquisitionFunction
+
+from olympus import ParameterVector
+from olympus.campaigns import ParameterSpace
+
+
+from atlas.optimizers.acqfs import (
+    create_available_options,
+    get_batch_initial_conditions,
+)
+from atlas.optimizers.params import Parameters
+from atlas.optimizers.utils import (
+    cat_param_to_feat,
+    forward_normalize,
+    forward_standardize,
+    get_cat_dims,
+    get_fixed_features_list,
+    infer_problem_type,
+    propose_randomly,
+    reverse_normalize,
+    reverse_standardize,
+)
+
+
 
 class GeneticOptimizer:
-    def __init__(self, param_space, constraints=None):
+    def __init__(
+        self,
+        params_obj: Parameters,
+        acqf: AcquisitionFunction,
+        known_constraints: List[Callable],
+        batch_size: int,
+        feas_strategy: str,
+        fca_constraint: Callable,
+        params: torch.Tensor,
+    ):
         """
         constraints : list or None
             List of callables that are constraints functions. Each function takes a parameter dict, e.g.
             {'x0':0.1, 'x1':10, 'x2':'A'} and returns a bool indicating
             whether it is in the feasible region or not.
         """
-        # self.config = config
-        # self.verbosity = self.config.get('verbosity')
-        # Logger.__init__(self, 'GeneticOptimizer', verbosity=self.verbosity)
-
-        self.param_space = param_space
+        self.params_obj = params_obj
+        self.param_space = self.params_obj.param_space
+        self.problem_type = infer_problem_type(self.param_space)
+        self.acqf = acqf
+        self.bounds = self.params_obj.bounds
+        self.batch_size = batch_size
+        self.feas_strategy = feas_strategy
+        self.fca_constraint = fca_constraint
+        self.has_descriptors = self.params_obj.has_descriptors
+        self._params = params
+        self._mins_x = self.params_obj._mins_x
+        self._maxs_x = self.params_obj._maxs_x
 
         # if constraints not None, and not a list, put into a list
-        if constraints is not None and isinstance(constraints, list) is False:
-            self.constraints = [constraints]
+        if known_constraints is not None and isinstance(known_constraints, list) is False:
+            self.known_constraints = [known_constraints]
         else:
-            self.constraints = constraints
+            self.known_constraints = known_constraints
 
-        # define which single-step optimization function to use
-        if self.constraints is None:
-            self._one_step_evolution = self._evolution
-        else:
+        # TODO: take care of this fca constraint stuff
+
+        if self.feas_strategy == 'fca':
+            # wrap this to be compatible with the True/False constriant convention for constraints
+            self.wrapped_fca_constraint_func = self._wrapped_fca_constraint
+            self.known_constraints.append(self.wrapped_fca_constraint_func)
+
+        # define which single-step optimization function to use, based on whether or not
+        # we have known constraints
+        if self.known_constraints != []:
             self._one_step_evolution = self._constrained_evolution
+        else:
+            self._one_step_evolution = self._evolution
 
         # range of opt domain dimensions
-        self.param_ranges = self.config.param_uppers - self.config.param_lowers
+        self.param_ranges = self._get_param_ranges()
 
-    def acquisition(self, x):
-        return self._acquisition(x)
 
-    def set_func(self, acquisition, ignores=None):
-        self._acquisition = acquisition
+    def _wrapped_fca_constraint(self, params):
+        # >= 0 is a feasible point --> True
+        # < 0 is an infeasible point --> False
 
-        if any(ignores) is True:
-            raise NotImplementedError(
-                "GeneticOptimizer with process constraints has not been implemented yet. "
-                'Please choose "adam" as the "acquisition_optimizer".'
-            )
+        # transform dictionary rep of x to expanded format
+        expanded = self.params_obj.param_vectors_to_expanded(
+            [ParameterVector().from_dict(params,self.param_space)],
+            is_scaled=False,
+            return_scaled=False # should already be scaled
+        )
 
-    def optimize(self, samples, max_iter=10, show_progress=False):
+        val = self.fca_constraint(
+            torch.tensor(expanded).view(expanded.shape[0], 1, expanded.shape[1])
+        ).detach().numpy()[0][0]
+
+        if val <= 0:
+            return True
+        else:
+            return False
+
+    def _get_param_ranges(self):
+        param_ranges = []
+        counter = 0
+        for param in self.param_space:
+            if param.type == 'continuous':
+                param_ranges.append(self.bounds[1,counter]-self.bounds[0,counter])
+                counter+=1
+            elif param.type=='discrete':
+                param_ranges.append(len(param.options))
+                counter+=1
+            elif param.type == 'categorical':
+                param_ranges.append(len(param.options))
+                if self.has_descriptors:
+                    counter+=len(param.descriptors[0])
+                else:
+                    counter+=len(param.options)
+
+        return np.array(param_ranges)
+
+
+    def indexify(self):
+        samples = []
+        counter = 0
+        for cond, cond_raw in zip(self.batch_initial_conditions, self.raw_conditions):
+            sample = []
+            counter = 0
+            for elem, p in zip(cond_raw, self.param_space):
+                if p.type == 'continuous':
+                    sample.append(float(cond[counter]))
+                    counter+=1
+                elif p.type == 'discrete':
+                    sample.append(float(p.options.index(float(elem))))
+                    counter+=1
+                elif p.type == 'categorical':
+                    sample.append(float(p.options.index(elem)))
+                    if self.has_descriptors:
+                        counter+=len(p.descriptors[0])
+                    else:
+                        counter+=len(p.options)
+            samples.append(sample)
+        return np.array(samples)
+
+
+
+    def deindexify(self, x):
+        samples = []
+        for x_ in x:
+            sample = []
+            counter = 0
+            for elem, p in zip(x_, self.param_space):
+                if p.type == 'continuous':
+                    sample.append(float(elem))
+                    counter+=1
+                elif p.type == 'discrete':
+                    sample.append(float(p.options[int(elem)]))
+                    counter+=1
+                elif p.type == 'categorical':
+                    sample.extend(
+                        cat_param_to_feat(
+                            p, p.options[int(elem)], self.has_descriptors,
+                        )
+                    )
+            samples.append(sample)
+        return np.array(samples)
+
+
+    def acquisition(self, x: np.ndarray) -> Tuple:
+        x = self.deindexify(x.reshape((1, x.shape[0])))
+        x = torch.tensor(
+            x.reshape((1, self.batch_size, x.shape[1]))
+        )
+        # return the negative of the acqf - this is conventionally minimized by
+        # deap, but we want to maximize acqf
+        return -self.acqf(x).detach().numpy()[0],
+
+
+    def optimize(self, max_iter:int=10, show_progress:bool=True) -> List[ParameterVector]:
         """
+        Returns list of parameter vectors with the optimized recommendations
+
         show_progress : bool
             whether to display the optimization progress. Default is False.
         """
+        num_restarts=200
+        # make initial samples
+        self.batch_initial_conditions, self.raw_conditions = get_batch_initial_conditions(
+            num_restarts=num_restarts,
+            batch_size=self.batch_size,
+            param_space=self.param_space,
+            constraint_callable=[], # TODO: implement these
+            has_descriptors=self.has_descriptors,
+            mins_x=self._mins_x,
+            maxs_x=self._maxs_x,
+            return_raw=True,
+        )
+        self.batch_initial_conditions = self.batch_initial_conditions.squeeze().numpy()
 
-        # print generations if verbosity set to DEBUG
-        if self.verbosity > 3.5:
-            verbose = True
-        else:
-            verbose = False
+        # indexify the discrete and categorical options
+        samples = self.indexify()
+
 
         # crossover and mutation probabilites
         CXPB = 0.5
         MUTPB = 0.4
-
-        if self.acquisition is None:
-            self.log(
-                "cannot optimize without a function being defined", "ERROR"
-            )
-            return None
 
         # setup GA with DEAP
         creator.create(
@@ -98,9 +240,7 @@ class GeneticOptimizer:
         else:
             toolbox.register("mate", tools.cxTwoPoint)  # two-point crossover
 
-        # ---------------------
         # Initialise population
-        # ---------------------
         population = toolbox.population(samples)
 
         # Evaluate pop fitnesses
@@ -128,10 +268,7 @@ class GeneticOptimizer:
         logbook.header = ["gen", "nevals"] + (stats.fields if stats else [])
         record = stats.compile(population) if stats else {}
         logbook.record(gen=0, nevals=len(population), **record)
-        if verbose is True:
-            split_stream = logbook.stream.split("\n")
-            self.log(split_stream[0], "DEBUG")
-            self.log(split_stream[1], "DEBUG")
+
 
         # ------------------------------
         # Begin the generational process
@@ -175,8 +312,6 @@ class GeneticOptimizer:
             # Append the current generation statistics to the logbook
             record = stats.compile(population) if stats else {}
             logbook.record(gen=gen, nevals=len(invalid_ind), **record)
-            if verbose is True:
-                self.log(logbook.stream, "DEBUG")
 
             # convergence criterion, if the population has very similar fitness, stop
             # we quit if the population is found in the hypercube with edge 10% of the optimization domain
@@ -187,7 +322,37 @@ class GeneticOptimizer:
         del creator.FitnessMin
         del creator.Individual
 
-        return np.array(population)
+        # select best recommendations and return them as param vectors
+        acqf_vals = [self.acquisition(x)[0] for x in np.array(population)]
+        best_idxs = np.argsort(acqf_vals)[::-1][:self.batch_size]
+        best_batch_pop = np.array(population)[best_idxs]
+
+        # TODO: this is pretty hacky...
+        best_batch_pop_deindex = self.deindexify(best_batch_pop)
+        best_batch_pop_deindex = reverse_normalize(best_batch_pop_deindex,self._mins_x,self._maxs_x)
+
+        best_batch = []
+        for best_index, best_deindex in zip(best_batch_pop,best_batch_pop_deindex):
+            sample = []
+            counter = 0
+            for elem, p in zip(best_index, self.param_space):
+                if p.type=='continuous':
+                    sample.append(best_deindex[counter])
+                    counter+=0
+                elif p.type == 'discrete':
+                    sample.append(best_deindex[counter])
+                    counter+=0
+                elif p.type == 'categorical':
+                    sample.append(elem)
+                    if self.has_descriptors:
+                        counter+=len(p.descriptors[0])
+                    else:
+                        counter+=len(p.options)
+            best_batch.append(sample)
+
+        best_batch_dicts = [param_vector_to_dict(sample, self.param_space) for sample in np.array(best_batch)]
+        return_params = [ParameterVector().from_dict(dict_,self.param_space) for dict_ in best_batch_dicts]
+        return return_params
 
     def _converged(self, population, slack=0.1):
         """If all individuals within specified subvolume, the population is not very diverse"""
@@ -264,15 +429,15 @@ class GeneticOptimizer:
                 del mutant.fitness.values
         return offspring
 
-    def _evaluate_feasibility(self, param_vector):
+    def _evaluate_feasibility(self, sample):
         # evaluate whether the optimized sample violates the known constraints
         param = param_vector_to_dict(
-            param_vector=param_vector,
-            param_names=self.config.param_names,
-            param_options=self.config.param_options,
-            param_types=self.config.param_types,
+            sample=sample,
+            param_space=self.param_space
         )
-        feasible = [constr(param) for constr in self.constraints]
+
+        feasible = [constr(param) for constr in self.known_constraints]
+
         return all(feasible)
 
     @staticmethod
@@ -304,19 +469,19 @@ class GeneticOptimizer:
         )  # object needed to allow strings of different lengths
         new_vector = child_vector
 
-        child_continuous = child_vector[self.config.continuous_mask]
-        child_discrete = child_vector[self.config.discrete_mask]
-        child_categorical = child_vector[self.config.categorical_mask]
+        child_continuous = child_vector[self.params_obj.cont_mask]
+        child_discrete = child_vector[self.params_obj.disc_mask]
+        child_categorical = child_vector[self.params_obj.cat_mask]
 
-        parent_continuous = parent_vector[self.config.continuous_mask]
-        parent_discrete = parent_vector[self.config.discrete_mask]
-        parent_categorical = parent_vector[self.config.categorical_mask]
+        parent_continuous = parent_vector[self.params_obj.cont_mask]
+        parent_discrete = parent_vector[self.params_obj.disc_mask]
+        parent_categorical = parent_vector[self.params_obj.cat_mask]
 
         # ---------------------------------------
         # (1) assign parent's categories to child
         # ---------------------------------------
-        if any(self.config.categorical_mask) is True:
-            new_vector[self.config.categorical_mask] = parent_categorical
+        if any(self.params_obj.cat_mask) is True:
+            new_vector[self.params_obj.cat_mask] = parent_categorical
             # If this fixes is, update child and return
             # This is equivalent to assigning the category to the child, and then going to step 2. Because child
             # and parent are both feasible, the procedure will converge to parent == child and will return parent
@@ -328,12 +493,13 @@ class GeneticOptimizer:
         # (2) follow stick breaking/tree search procedure for continuous/discrete
         # -----------------------------------------------------------------------
         if (
-            any(self.config.continuous_mask)
-            or any(self.config.discrete_mask) is True
+            any(self.params_obj.cont_mask)
+            or any(self.params_obj.disc_mask) is True
         ):
-            # data needed to normalize continuous values
-            lowers = self.config.feature_lowers[self.config.continuous_mask]
-            uppers = self.config.feature_uppers[self.config.continuous_mask]
+            # data needed to normalize continuous values\
+            # TODO: do we actually need to do this??
+            lowers = self.bounds[0][self.params_obj.exp_cont_mask].numpy()
+            uppers = self.bounds[1][self.params_obj.exp_cont_mask].numpy()
             inv_range = 1.0 / (uppers - lowers)
             counter = 0
             while True:
@@ -350,17 +516,17 @@ class GeneticOptimizer:
                 )
                 new_discrete = np.round(noisy_mean, 0)
 
-                new_vector[self.config.continuous_mask] = new_continuous
-                new_vector[self.config.discrete_mask] = new_discrete
+                new_vector[self.params_obj.cont_mask] = new_continuous
+                new_vector[self.params_obj.disc_mask] = new_discrete
 
                 # if child is now feasible, parent becomes new_vector (we expect parent to always be feasible)
                 if self._evaluate_feasibility(new_vector) is True:
-                    parent_continuous = new_vector[self.config.continuous_mask]
-                    parent_discrete = new_vector[self.config.discrete_mask]
+                    parent_continuous = new_vector[self.params_obj.cont_mask]
+                    parent_discrete = new_vector[self.params_obj.disc_mask]
                 # if child still infeasible, child becomes new_vector (we expect parent to be the feasible one
                 else:
-                    child_continuous = new_vector[self.config.continuous_mask]
-                    child_discrete = new_vector[self.config.discrete_mask]
+                    child_continuous = new_vector[self.params_obj.cont_mask]
+                    child_discrete = new_vector[self.params_obj.disc_mask]
 
                 # convergence criterion is that length of stick is less than 1% in all continuous dimensions
                 # for discrete variables, parent and child should be same
@@ -391,20 +557,20 @@ class GeneticOptimizer:
                     )
 
         # last parent values are the feasible ones
-        new_vector[self.config.continuous_mask] = parent_continuous
-        new_vector[self.config.discrete_mask] = parent_discrete
+        new_vector[self.params_obj.cont_mask] = parent_continuous
+        new_vector[self.params_obj.disc_mask] = parent_discrete
 
         # ---------------------------------------------------------
         # (3) Try reset child's categories, otherwise keep parent's
         # ---------------------------------------------------------
-        if any(self.config.categorical_mask) is True:
-            new_vector[self.config.categorical_mask] = child_categorical
+        if any(self.params_obj.cat_mask) is True:
+            new_vector[self.params_obj.cat_mask] = child_categorical
             if self._evaluate_feasibility(new_vector) is True:
                 self._update_individual(child, new_vector)
                 return
             else:
                 # This HAS to be feasible, otherwise there is a bug
-                new_vector[self.config.categorical_mask] = parent_categorical
+                new_vector[self.params_obj.cat_mask] = parent_categorical
                 self._update_individual(child, new_vector)
                 return
         else:
@@ -426,9 +592,9 @@ class GeneticOptimizer:
             Scale for normally-distributed perturbation of discrete values.
         """
 
-        assert len(individual) == len(self.config.param_types)
+        assert len(individual) == len(self.param_space)
 
-        for i, param in enumerate(self.config.parameters):
+        for i, param in enumerate(self.param_space):
             param_type = param["type"]
 
             # determine whether we are performing a mutation
@@ -436,8 +602,8 @@ class GeneticOptimizer:
 
                 if param_type == "continuous":
                     # Gaussian perturbation with scale being 0.1 of domain range
-                    bound_low = self.config.feature_lowers[i]
-                    bound_high = self.config.feature_uppers[i]
+                    bound_low = self.bounds[0,i]
+                    bound_high = self.bounds[1,i]
                     scale = (bound_high - bound_low) * continuous_scale
                     individual[i] += np.random.normal(loc=0.0, scale=scale)
                     individual[i] = _project_bounds(
@@ -445,9 +611,9 @@ class GeneticOptimizer:
                     )
                 elif param_type == "discrete":
                     # add/substract an integer by rounding Gaussian perturbation
-                    # scale is 0.1 of domain range
-                    bound_low = self.config.feature_lowers[i]
-                    bound_high = self.config.feature_uppers[i]
+                    #scale is 0.1 of domain range
+                    bound_low = 0
+                    bound_high = len(param.options)-1
                     # if we have very few discrete variables, just move +/- 1
                     if bound_high - bound_low < 10:
                         delta = np.random.choice([-1, 1])
@@ -459,10 +625,11 @@ class GeneticOptimizer:
                     individual[i] = _project_bounds(
                         individual[i], bound_low, bound_high
                     )
+
                 elif param_type == "categorical":
                     # resample a random category
                     num_options = float(
-                        self.config.feature_sizes[i]
+                        self.param_ranges[i]
                     )  # float so that np.arange returns doubles
                     individual[i] = np.random.choice(
                         list(np.arange(num_options))

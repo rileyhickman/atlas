@@ -307,7 +307,6 @@ class FeasibilityAwareEI(ExpectedImprovement):
             raise NotImplementedError
 
 
-
 class FeasibilityAwareUCB(UpperConfidenceBound):
 
     def __init__(
@@ -393,7 +392,6 @@ class FeasibilityAwareUCB(UpperConfidenceBound):
 
 
 
-
 def get_batch_initial_conditions(
     num_restarts,
     batch_size,
@@ -403,6 +401,7 @@ def get_batch_initial_conditions(
     maxs_x,
     has_descriptors,
     num_chances=15,
+    return_raw=False,
 ):
     """generate batches of initial conditions for a
     random restart optimization subject to some constraints. This uses
@@ -422,11 +421,10 @@ def get_batch_initial_conditions(
     """
     # take 15*num_restarts points randomly and evaluate the constraint function on all of
     # them, if we have enough, proceed, if not proceed to sequential rejection sampling
-    num_raw_samples = 15 * num_restarts
-    raw_samples, _ = propose_randomly(
+    num_raw_samples = 10 * num_restarts
+    raw_samples, raw_proposals = propose_randomly(
         num_raw_samples, param_space, has_descriptors
     )
-
     # forward normalize the randomly generated samples
     raw_samples = forward_normalize(raw_samples, mins_x, maxs_x)
 
@@ -434,23 +432,34 @@ def get_batch_initial_conditions(
         raw_samples.shape[0], batch_size, raw_samples.shape[1]
     )
 
-    constraint_vals = []
-    for constraint in constraint_callable:
-        constraint_val = constraint(raw_samples)
-        if len(constraint_val.shape) == 1:
-            constraint_val = constraint_val.view(constraint_val.shape[0], 1)
-        constraint_vals.append(constraint_val)
+    if constraint_callable == []:
+        # no constraints
+        batch_initial_conditions = raw_samples
+        batch_initial_conditions_raw = raw_proposals
+    else:
+        constraint_vals = []
+        for constraint in constraint_callable:
+            constraint_val = constraint(raw_samples)
+            if len(constraint_val.shape) == 1:
+                constraint_val = constraint_val.view(constraint_val.shape[0], 1)
+            constraint_vals.append(constraint_val)
 
-    if len(constraint_vals) == 2:
-        constraint_vals = torch.cat(constraint_vals, dim=1)
-        feas_ix = torch.where(torch.all(constraint_vals >= 0, dim=1))[0]
-    elif len(constraint_vals) == 1:
-        constraint_vals = constraint_vals[0]
-        feas_ix = torch.where(constraint_vals >= 0)[0]
+        if len(constraint_vals) == 2:
+            constraint_vals = torch.cat(constraint_vals, dim=1)
+            feas_ix = torch.where(torch.all(constraint_vals >= 0, dim=1))[0]
+        elif len(constraint_vals) == 1:
+            constraint_vals = constraint_vals[0]
+            feas_ix = torch.where(constraint_vals >= 0)[0]
 
-    batch_initial_conditions = raw_samples[feas_ix, :, :]
+        batch_initial_conditions = raw_samples[feas_ix, :, :]
+        batch_initial_conditions_raw = raw_proposals[feas_ix, :]
 
     if batch_initial_conditions.shape[0] >= num_restarts:
+        if return_raw:
+            return (
+                batch_initial_conditions[:num_restarts,:,:],
+                batch_initial_conditions_raw[:num_restarts,:]
+            )
         return batch_initial_conditions[:num_restarts, :, :]
     elif 0 < batch_initial_conditions.shape[0] < num_restarts:
         print(
@@ -474,7 +483,10 @@ def get_batch_initial_conditions(
 
     assert len(batch_initial_conditions.size()) == 3
 
+    if return_raw:
+        return batch_initial_conditions, batch_initial_conditions_raw
     return batch_initial_conditions
+
 
 
 def sample_around_x(raw_samples, constraint_callable):

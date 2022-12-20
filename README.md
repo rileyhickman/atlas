@@ -3,6 +3,8 @@
 
 [![rileyhickman](https://circleci.com/gh/rileyhickman/atlas.svg?style=svg&circle-token=96039a8d33f9fade7e4c1a5420312b0711b16cde)](https://app.circleci.com/pipelines/github/rileyhickman/atlas)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 
 `atlas` is a Python package for Bayesian optimization in the experimental science. At its core, the package provides high-performing, easy-to-use Bayesian optimization based
 on Gaussian processes (with help from the GPyTorch and BoTorch libraries). `atlas` attempts to cater directly to the needs of researchers in the experimental sciences,
@@ -13,7 +15,7 @@ optimization, meta-learning optimization, data-driven search space expansion/con
 `atlas` is intended serve as the brain or experiment planner for self-driving laboratories.
 
 
-`atlas` is developed at the University of Toronto, the Vector Institute for Artificial Intelligence, and Soteria Therapeutics, Inc.
+`atlas` is proudly developed in :ca: at the University of Toronto, the Vector Institute for Artificial Intelligence, and Soteria Therapeutics, Inc.
 
 
 ![alt text](https://github.com/rileyhickman/atlas/blob/main/static/atlas_logo.png)
@@ -54,9 +56,14 @@ pip install gspread
 
 ### Optimization with a-priori unknown constraints
 
+
 ### Multi-objective optimization
 
+
 ### Robust optimization with Golem
+
+
+### Optimization for a generalizable set of parameters
 
 
 ## License
