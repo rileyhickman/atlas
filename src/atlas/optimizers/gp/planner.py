@@ -97,13 +97,14 @@ class BoTorchPlanner(BasePlanner):
         use_descriptors: bool = False,
         num_init_design: int = 5,
         init_design_strategy: str = "random",
-        acquisition_type: str = 'ei',  # ei, ucb
+        acquisition_type: str = 'ei',  # ei, ucb, variance, general
         acquisition_optimizer_kind: str = "gradient",  # gradient, genetic
         vgp_iters: int = 2000,
         vgp_lr: float = 0.1,
         max_jitter: float = 1e-1,
         cla_threshold: float = 0.5,
         known_constraints: Optional[List[Callable]] = None,
+        general_parameters: Optional[List[int]] = None,
         is_moo: bool = False,
         value_space: Optional[ParameterSpace] = None,
         scalarizer_kind: Optional[str] = "Hypervolume",
@@ -365,6 +366,20 @@ class BoTorchPlanner(BasePlanner):
                     infeas_ratio,
                     acqf_min_max,
                 )
+            elif self.acquisition_type == 'general':
+                self.acqf = FeasibilityAwareGeneral(
+                    self.reg_model,
+                    self.cla_model,
+                    self.cla_likelihood,
+                    self.general_parameters,
+                    self.param_space,
+                    self.feas_strategy,
+                    self.feas_param,
+                    self.infeas_ratio,
+                    self.acqf_min_max,
+                    self.use_p_feas_only,
+                    self.maximize,
+                )
             else:
                 msg = f'Acquisition function type {self.acquisition_type} not understood!'
                 Logger.log(msg, 'FATAL')
@@ -409,9 +424,7 @@ class BoTorchPlanner(BasePlanner):
         samples, _ = propose_randomly(
             num_samples, self.param_space, self.has_descriptors,
         )
-        # if not self.problem_type=='fully_categorical' and not self.has_descriptors:
-        # 	# we dont scale the parameters if we have a one-hot-encoded representation
-        # 	samples = forward_normalize(samples, self._mins_x, self._maxs_x)
+
         if (
             self.problem_type == "fully_categorical"
             and not self.has_descriptors

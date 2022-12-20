@@ -39,6 +39,7 @@ class Parameters():
 		olympus_param_space: ParameterSpace,
 		observations: Observations,
 		has_descriptors: bool,
+		general_parameters: Optional[List[int]] = None,
 	) -> None:
 
 
@@ -48,6 +49,8 @@ class Parameters():
 		self.olympus = observations.get_params()
 		observations._construct_param_vectors()
 		self.param_vectors = list(observations._params_as_vectors)
+		self.general_dims = general_parameters
+
 
 		# dimensions of expanded representations
 		(
@@ -90,6 +93,11 @@ class Parameters():
 		return self.expanded_raw.shape[1]
 
 	@property
+	def expanded_general_dims(self):
+		# TODO: implement this!
+		return None
+
+	@property
 	def cont_dims(self):
 		return [
 			ix for ix, param in enumerate(self.param_space) if param.type=='continuous'
@@ -130,6 +138,9 @@ class Parameters():
 	@property
 	def exp_cat_mask(self):
 		return [True if ix in self.exp_cat_dims else False for ix in range(self.expanded_raw.shape[1])]
+
+
+
 
 
 	def _get_expanded_indexed(self):

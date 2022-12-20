@@ -78,6 +78,7 @@ class BasePlanner(CustomPlanner):
         max_jitter: float = 1e-1,
         cla_threshold: float = 0.5,
         known_constraints: Optional[List[Callable]] = None,
+        general_parameters: Optional[List[int]] = None,
         is_moo: bool = False,
         value_space: Optional[ParameterSpace] = None,
         scalarizer_kind: Optional[str] = "Hypervolume",
@@ -105,6 +106,7 @@ class BasePlanner(CustomPlanner):
         self.max_jitter = max_jitter
         self.cla_threshold = cla_threshold
         self.known_constraints = known_constraints
+        self.general_parameters = general_parmeters
         self.is_moo = is_moo
         self.value_space = value_space
         self.scalarizer_kind = scalarizer_kind
@@ -148,6 +150,8 @@ class BasePlanner(CustomPlanner):
 
         self.num_init_design_completed = 0
 
+
+
     def _set_param_space(self, param_space: ParameterSpace):
         """set the Olympus parameter space (not actually really needed)"""
 
@@ -185,6 +189,13 @@ class BasePlanner(CustomPlanner):
 
         else:
             self.has_descriptors = False
+
+        # check general parameter types, if we have some
+        if self.general_parameters is not None:
+            if not all([self.param_space[gen_ix].type in ['discrete', 'categorical'] for ix in self.general_parmeters]):
+                msg = 'Only discrete- and categorical-type general parameters are currently supported'
+                Logger.log(msg, 'FATAL')
+
 
     def build_train_classification_gp(
         self, train_x: torch.Tensor, train_y: torch.Tensor

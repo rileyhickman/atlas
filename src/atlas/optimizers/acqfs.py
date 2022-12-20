@@ -35,7 +35,6 @@ class VarianceBased(AcquisitionFunction):
         return sigma.view(view_shape)
 
 
-
 class FeasibilityAwareVarainceBased(VarianceBased):
     """ Feasibility aware variance-based sampling (active learning)
     """
@@ -115,8 +114,6 @@ class FeasibilityAwareVarainceBased(VarianceBased):
 
 class FeasibilityAwareGeneral(AcquisitionFunction):
     """Abstract feasibilty aware general purpose optimization acquisition function.
-
-
     """
 
     def __init__(
@@ -124,7 +121,7 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
         reg_model,
         cla_model,
         cla_likelihood,
-        general_parmeters,
+        general_parameters,
         param_space,
         best_f,
         feas_strategy,
@@ -141,7 +138,7 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
         self.reg_model = reg_model
         self.cla_model = cla_model
         self.cla_likelihood = cla_likelihood
-        self.general_parmeters = general_parmeters
+        self.general_parameters = general_parameters
         self.param_space = param_space
         self.feas_strategy = feas_strategy
         self.feas_param = feas_param
