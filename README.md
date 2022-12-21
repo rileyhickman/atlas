@@ -75,20 +75,20 @@ Consider an optimization problem with $d$ continuous reaction parameters, $\math
 parameters). The goal of such an optimization is to maximize the objective function $f(\mathbf{x})$, which is
 the average response across all molecules,
 
-$$ f_{\mathcal{C}} = \frac{1}{n} \sum_{i=1}^n f(\mathbb{x}, s_i) \; . $$
+$$ f_{\mathcal{C}} = \frac{1}{n} \sum_{i=1}^n f(\mathbb{x}, s_i)  . $$
 
 For a minimization problem, the best performing parameters are
 
-$$  \mathbf{x}^* = \argmin_{\mathbf{x}\in \mathcal{X}, \; s_i \in \mathcal{C}} f_{\mathcal{C}} \; .$$
+$$  \mathbf{x}^* = argmin_{\mathbf{x}\in \mathcal{X}, s_i \in \mathcal{C}} f_{\mathcal{C}}  .$$
 
 `atlas` employs an approach which removes the need to measure $f_{\mathcal{C}}$ at each iteration. Consider a toy problem,
 where $n=3$, and the following piecewise function is used for $f_{\mathcal{C}}$, and is to be minimized.
 
-$$ f(\mathbf{x}, s) = \sin(x_1) + 12\cos(x_2) - 0.1x_3  \;\;\; \text{if} \; s = s_1$$
+$$ f(\mathbf{x}, s) = \sin(x_1) + 12\cos(x_2) - 0.1x_3   \text{  if}  s = s_1$$
 
-$$ f(\mathbf{x}, s) = 3\sin(x_1) + 0.01\cos(x_2) + x_3^2 \;\;\; \text{if} \; s = s_2$$
+$$ f(\mathbf{x}, s) = 3\sin(x_1) + 0.01\cos(x_2) + x_3^2  \text{  if }  s = s_2$$
 
-$$ f(\mathbf{x}, s) = 5\cos(x_1) + 0.01\cos(x_2) + 2x_3^3 \;\;\; \text{if} \; s = s_3$$
+$$ f(\mathbf{x}, s) = 5\cos(x_1) + 0.01\cos(x_2) + 2x_3^3  \text{  if } s = s_3$$
 
 
 The variable $s$ is a categorical parameter with 3 options. $f_{\mathcal{C}}$ has a minimum value of approximately
@@ -108,33 +108,20 @@ param_space.add(
     )
 )
 param_space.add(
-    ParameterContinuous(
-        name='x_1',
-        low=0.,
-        high=1.
-    )
+    ParameterContinuous(name='x_1',low=0.,high=1.)
 )
 param_space.add(
-    ParameterContinuous(
-        name='x_2',
-        low=0.,
-        high=1.
-    )
+    ParameterContinuous(name='x_2',low=0.,high=1.)
 )
 param_space.add(
-    ParameterContinuous(
-        name='x_3',
-        low=0.,
-        high=1.,
-    )
+    ParameterContinuous(name='x_3',low=0.,high=1.)
 )
-
 
 planner  = BoTorchPlanner(
-  goal='minimize',
-  batch_size=1,
-  num_init_design=5,
-  general_parameters=[0] # indices of general parameters
+    goal='minimize',
+    batch_size=1,
+    num_init_design=5,
+    general_parameters=[0] # indices of general parameters
 )
 
 planner.set_param_space(param_space)
@@ -146,7 +133,7 @@ represent the parameter space indices which are intended to be treated as _gener
 parameters. The figure below shows the performance of `atlas` compared to random sampling on this toy
 problem (10 repeats).
 
-![alt text](https://github.com/rileyhickman/atlas/blob/main/static/synthetic_general_conditions.png)
+![alt text](https://github.com/rileyhickman/atlas/blob/main/static/synthetic_general_conditions_gradient.png)
 
 
 ## License
