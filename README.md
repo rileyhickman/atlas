@@ -44,8 +44,17 @@ pip install gspread
 
 ## Usage
 
+This section gives minimal code examples showcasing some of the primary features of `atlas`.
+You can also familiarize yourself with the package by checking out the following Google colab
+notebook.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rileyhickman/atlas/blob/main/atlas_get_started.ipynb)
+
+
 
 ### Proof-of-concept optimization
+
+
 
 
 ### Optimization of mixed-parameter spaces
@@ -66,9 +75,8 @@ pip install gspread
 ### Optimization for a generalizable set of parameters
 
 
-Often, researchers may like to find parameters that are _generalizable_ to several conditions.
-For example, one might want to find a single set of chemical reaction conditions which give good yield
-across several different substrates. [cite MADNESS Science paper]
+Often, researchers may like to find parameters that are _generalizable_.
+For example, one might want to find a single set of chemical reaction conditions which give good yield across several different substrates. [cite MADNESS Science paper]
 
 Consider an optimization problem with $d$ continuous reaction parameters, $\mathcal{X} \in \mathbb{R}^d$
 (functional parameters), and a set of $n$ substrates $\mathcal{S} = { s_i }_{i=1}^n$ (non-functional
