@@ -531,7 +531,8 @@ class BasePlanner(CustomPlanner):
         self.params_obj = Parameters(
             olympus_param_space=self.param_space,
             observations=observations,
-            has_descriptors=self.has_descriptors
+            has_descriptors=self.has_descriptors,
+            general_parmeters=self.general_parameters,
         )
 
     def fca_constraint(self, X: torch.Tensor) -> torch.Tensor:

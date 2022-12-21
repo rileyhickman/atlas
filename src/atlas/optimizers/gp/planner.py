@@ -371,6 +371,7 @@ class BoTorchPlanner(BasePlanner):
                     self.reg_model,
                     self.cla_model,
                     self.cla_likelihood,
+                    self.params_obj,
                     self.general_parameters,
                     self.param_space,
                     self.feas_strategy,

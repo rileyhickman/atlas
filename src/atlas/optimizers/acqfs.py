@@ -121,6 +121,7 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
         reg_model,
         cla_model,
         cla_likelihood,
+        params_obj,
         general_parameters,
         param_space,
         best_f,
@@ -138,6 +139,7 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
         self.reg_model = reg_model
         self.cla_model = cla_model
         self.cla_likelihood = cla_likelihood
+        self.params_obj = params_obj
         self.general_parameters = general_parameters
         self.param_space = param_space
         self.feas_strategy = feas_strategy

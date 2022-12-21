@@ -42,7 +42,6 @@ class Parameters():
 		general_parameters: Optional[List[int]] = None,
 	) -> None:
 
-
 		self.param_space = olympus_param_space
 		self.has_descriptors = has_descriptors
 		# Olympus observations
@@ -51,10 +50,9 @@ class Parameters():
 		self.param_vectors = list(observations._params_as_vectors)
 		self.general_dims = general_parameters
 
-
 		# dimensions of expanded representations
 		(
-			self.exp_cont_dims, self.exp_disc_dims, self.exp_cat_dims
+			self.exp_cont_dims, self.exp_disc_dims, self.exp_cat_dims, self.exp_general_dims,
 			) = self._get_expanded_dims()
 
 		if len(observations.get_params())>0:
@@ -95,6 +93,16 @@ class Parameters():
 	@property
 	def expanded_general_dims(self):
 		# TODO: implement this!
+		return None
+
+	@property
+	def general_mask(self):
+		# TODO: implement this
+		return None
+
+	@property
+	def exp_general_mask(self):
+		# TODO: implement this
 		return None
 
 	@property
@@ -141,8 +149,6 @@ class Parameters():
 
 
 
-
-
 	def _get_expanded_indexed(self):
 		expanded, indexed = [], []
 		for sample_ix, sample in enumerate(self.olympus):
@@ -179,22 +185,29 @@ class Parameters():
 	def _get_expanded_dims(self):
 		dim = 0
 		exp_cont_dims, exp_disc_dims, exp_cat_dims = [],[],[]
-		for param in self.param_space:
+		exp_general_dims = []
+		for param_ix, param in enumerate(self.param_space):
 			if param.type == 'continuous':
 				exp_cont_dims.append(dim)
+				if param_ix in self.general_dims:
+					exp_general_dims.append(dim)
 				dim+=1
 			elif param.type == 'discrete':
 				exp_disc_dims.append(dim)
+				if param_ix in self.general_dims:
+					exp_general_dims.append(dim)
+				exp_general_dims.append(dim)
 				dim+=1
 			elif param.type == 'categorical':
 				if self.has_descriptors:
 					dims = np.arange(dim, dim + len(param.descriptors[0]))
 				else:
 					dims = np.arange(dim, dim + len(param.options))
-				exp_cat_dims.extend(dims)
+				if param_ix in self.general_dims:
+					exp_cat_dims.extend(dims)
 				dim+=len(dims)
 		return (
-			exp_cont_dims, exp_disc_dims, exp_cat_dims
+			exp_cont_dims, exp_disc_dims, exp_cat_dims, exp_general_dims
 		)
 
 
