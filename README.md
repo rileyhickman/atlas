@@ -66,6 +66,22 @@ pip install gspread
 ### Optimization for a generalizable set of parameters
 
 
+Often, researchers may like to find parameters that are _generalizable_ to several conditions.
+For example, one might want to find a single set of chemical reaction conditions which give good yield
+across several different substrates. [cite MADNESS Science paper]
+
+Consider an optimization problem with $d$ continuous reaction parameters, $\mathcal{X} \in \mathbb{R}^d$
+(functional parameters), and a set of $n$ substrates $\mathcal{S} = \{ s_i \}_{i=1}^n$ (non-functional
+parameters). The goal of such an optimization is to maximize the objective function $f(\mathbf{x})$, which is
+the average response across all molecules,
+
+$$ f(\mathbf{x}) = \frac{1}{n} \sum_{i=1}^n f(\mathbb{x}, s_i) . $$
+
+
+
+![alt text](https://github.com/rileyhickman/atlas/blob/main/static/atlas_logo.png)
+
+
 ## License
 
 Distributed under the [MIT](https://choosealicense.com/licenses/mit/)
