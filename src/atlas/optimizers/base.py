@@ -106,7 +106,7 @@ class BasePlanner(CustomPlanner):
         self.max_jitter = max_jitter
         self.cla_threshold = cla_threshold
         self.known_constraints = known_constraints
-        self.general_parameters = general_parmeters
+        self.general_parameters = general_parameters
         self.is_moo = is_moo
         self.value_space = value_space
         self.scalarizer_kind = scalarizer_kind
@@ -192,7 +192,7 @@ class BasePlanner(CustomPlanner):
 
         # check general parameter types, if we have some
         if self.general_parameters is not None:
-            if not all([self.param_space[gen_ix].type in ['discrete', 'categorical'] for ix in self.general_parmeters]):
+            if not all([self.param_space[ix].type in ['discrete', 'categorical'] for ix in self.general_parameters]):
                 msg = 'Only discrete- and categorical-type general parameters are currently supported'
                 Logger.log(msg, 'FATAL')
 
@@ -532,7 +532,7 @@ class BasePlanner(CustomPlanner):
             olympus_param_space=self.param_space,
             observations=observations,
             has_descriptors=self.has_descriptors,
-            general_parmeters=self.general_parameters,
+            general_parameters=self.general_parameters,
         )
 
     def fca_constraint(self, X: torch.Tensor) -> torch.Tensor:

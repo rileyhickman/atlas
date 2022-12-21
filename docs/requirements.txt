@@ -4,3 +4,4 @@ msmb_theme
 m2r2
 nbsphinx
 sphinx_design
+furo

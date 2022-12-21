@@ -20,6 +20,37 @@ from atlas.optimizers.utils import (
     propose_randomly,
 )
 
+class FeasibilityAwareAcquisition:
+
+    def compute_feas_post(self, X):
+        """computes the posterior P(infeasible|X)
+        Args:
+                X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
+        """
+        with gpytorch.settings.cholesky_jitter(1e-1):
+            return self.cla_likelihood(
+                self.cla_model(X.float().squeeze(1))
+            ).mean
+
+    def compute_combined_acqf(self, acqf, p_feas):
+        """compute the combined acqusition function"""
+        if self.feas_strategy == "fwa":
+            return acqf * p_feas
+        elif self.feas_strategy == "fca":
+            return acqf
+        elif self.feas_strategy == "fia":
+            return ((1.0 - self.infeas_ratio**self.feas_param) * acqf) + (
+                (self.infeas_ratio**self.feas_param) * (p_feas)
+            )
+        elif "naive-" in self.feas_strategy:
+            if self.use_p_feas_only:
+                return p_feas
+            else:
+                return acqf
+        else:
+            raise NotImplementedError
+
+
 class VarianceBased(AcquisitionFunction):
     """ Variance-based sampling (active learning)
     """
@@ -35,7 +66,7 @@ class VarianceBased(AcquisitionFunction):
         return sigma.view(view_shape)
 
 
-class FeasibilityAwareVarainceBased(VarianceBased):
+class FeasibilityAwareVarainceBased(VarianceBased, FeasibilityAwareAcquisition):
     """ Feasibility aware variance-based sampling (active learning)
     """
 
@@ -83,36 +114,8 @@ class FeasibilityAwareVarainceBased(VarianceBased):
         return self.compute_combined_acqf(acqf, p_feas)
 
 
-    def compute_feas_post(self, X):
-        """computes the posterior P(feasible|X)
-        Args:
-                X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
-        """
-        with gpytorch.settings.cholesky_jitter(1e-1):
-            return self.cla_likelihood(
-                self.cla_model(X.float().squeeze(1))
-            ).mean
 
-    def compute_combined_acqf(self, acqf, p_feas):
-        """compute the combined acqusition function"""
-        if self.feas_strategy == "fwa":
-            return acqf * p_feas
-        elif self.feas_strategy == "fca":
-            return acqf
-        elif self.feas_strategy == "fia":
-            return ((1 - self.infeas_ratio) ** self.feas_param * acqf) + (
-                (self.infeas_ratio**self.feas_param) * (1 - p_feas)
-            )
-        elif "naive-" in self.feas_strategy:
-            if self.use_p_feas_only:
-                return p_feas
-            else:
-                return acqf
-        else:
-            raise NotImplementedError
-
-
-class FeasibilityAwareGeneral(AcquisitionFunction):
+class FeasibilityAwareGeneral(AcquisitionFunction, FeasibilityAwareAcquisition):
     """Abstract feasibilty aware general purpose optimization acquisition function.
     """
 
@@ -122,7 +125,7 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
         cla_model,
         cla_likelihood,
         params_obj,
-        general_parameters,
+        # general_parameters,
         param_space,
         best_f,
         feas_strategy,
@@ -140,7 +143,6 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
         self.cla_model = cla_model
         self.cla_likelihood = cla_likelihood
         self.params_obj = params_obj
-        self.general_parameters = general_parameters
         self.param_space = param_space
         self.feas_strategy = feas_strategy
         self.feas_param = feas_param
@@ -149,9 +151,20 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
         self.use_p_feas_only = use_p_feas_only
         self.maximize = maximize
 
+        self.X_sns_empty, _ = self.generate_X_sns()
+        self.functional_dims = np.logical_not(self.params_obj.exp_general_mask)
+
+
     def forward(self, X):
+        X = X.double()
         best_f = self.best_f.to(X)
-        X_sns = self.generate_s_n(X)
+
+        X_sns = torch.empty( (X.shape[0],)+self.X_sns_empty.shape ).double()
+        for x_ix in range(X.shape[0]):
+            X_sn  = torch.clone(self.X_sns_empty)
+            X_sn[:, :, self.functional_dims] = X[x_ix, :, self.functional_dims]
+            X_sns[x_ix,:,:,:] = X_sn
+
         pred_mu_x, pred_sigma_x = [], []
 
         for X_sn in X_sns:
@@ -181,49 +194,47 @@ class FeasibilityAwareGeneral(AcquisitionFunction):
 
         return ei
 
-    def generate_s_n(self, X):
 
-        X_sns = []
-        options_ = self.param_space[0].options
-        for option in options_:
-            feat = cat_param_to_feat(self.param_space[0], option)
-            X[:, :, : len(options_)] = torch.tensor(feat)
-            X_sns.append(X)
+    def generate_X_sns(self):
+        # generate Cartesian product space of the general parameter options
+        param_options = []
+        for ix in self.params_obj.general_dims:
+            param_options.append(self.param_space[ix].options)
 
-        X_sns = torch.stack(X_sns)
+        cart_product = list(itertools.product(*param_options))
+        cart_product = [list(elem) for elem in cart_product]
 
-        return X_sns
+        X_sns_empty = torch.empty(size=(len(cart_product), self.params_obj.expanded_dims)).double()
+        general_expanded = []
+        general_raw  = []
+        for elem in cart_product:
+            # convert to ohe and add to currently available options
+            ohe,raw = [],[]
+            for val, obj in zip(elem, self.param_space):
+                if obj.type == "categorical":
+                    ohe.append(
+                        cat_param_to_feat(obj, val, self.params_obj.has_descriptors)
+                    )
+                    raw.append(val)
+                else:
+                    ohe.append([val])
+            general_expanded.append(np.concatenate(ohe))
+            general_raw.append(raw)
 
-    def compute_feas_post(self, X):
-        """computes the posterior P(feasible|X)
-        Args:
-                X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
-        """
-        with gpytorch.settings.cholesky_jitter(1e-1):
-            return self.cla_likelihood(
-                self.cla_model(X.float().squeeze(1))
-            ).mean
+        general_expanded = torch.tensor(np.array(general_expanded))
 
-    def compute_combined_acqf(self, acqf, p_feas):
-        """compute the combined acqusition function"""
-        if self.feas_strategy == "fwa":
-            return acqf * p_feas
-        elif self.feas_strategy == "fca":
-            return acqf
-        elif self.feas_strategy == "fia":
-            return ((1 - self.infeas_ratio) ** self.feas_param * acqf) + (
-                (self.infeas_ratio**self.feas_param) * (1 - p_feas)
-            )
-        elif "naive-" in self.feas_strategy:
-            if self.use_p_feas_only:
-                return p_feas
-            else:
-                return acqf
-        else:
-            raise NotImplementedError
+        X_sns_empty[:, self.params_obj.exp_general_mask] = general_expanded
+        # forward normalize
+        X_sns_empty = forward_normalize(
+            X_sns_empty, self.params_obj._mins_x, self.params_obj._maxs_x,
+        )
+        # TODO: careful of the batch size, will need to change this
+        X_sns_empty = torch.unsqueeze(X_sns_empty,1)
+
+        return X_sns_empty, general_raw
 
 
-class FeasibilityAwareQEI(qExpectedImprovement):
+class FeasibilityAwareQEI(qExpectedImprovement, FeasibilityAwareAcquisition):
     """Abstract feasibility aware expected improvement acquisition function. Compatible
     with the FIA, FCA and FWA strategies, as well as any of the naive strategies.
     Args:
@@ -282,36 +293,9 @@ class FeasibilityAwareQEI(qExpectedImprovement):
 
         return self.compute_combined_acqf(acqf, p_feas)
 
-    def compute_feas_post(self, X):
-        """computes the posterior P(feasible|X)
-        Args:
-                X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
-        """
-        with gpytorch.settings.cholesky_jitter(1e-1):
-            return self.cla_likelihood(
-                self.cla_model(X.float().squeeze(1))
-            ).mean
-
-    def compute_combined_acqf(self, acqf, p_feas):
-        """compute the combined acqusition function"""
-        if self.feas_strategy == "fwa":
-            return acqf * p_feas
-        elif self.feas_strategy == "fca":
-            return acqf
-        elif self.feas_strategy == "fia":
-            return ((1 - self.infeas_ratio) ** self.feas_param * acqf) + (
-                (self.infeas_ratio**self.feas_param) * (1 - p_feas)
-            )
-        elif "naive-" in self.feas_strategy:
-            if self.use_p_feas_only:
-                return p_feas
-            else:
-                return acqf
-        else:
-            raise NotImplementedError
 
 
-class FeasibilityAwareEI(ExpectedImprovement):
+class FeasibilityAwareEI(ExpectedImprovement, FeasibilityAwareAcquisition):
     """Abstract feasibility aware expected improvement acquisition function. Compatible
     with the FIA, FCA and FWA strategies, as well as any of the naive strategies.
     Args:
@@ -369,36 +353,8 @@ class FeasibilityAwareEI(ExpectedImprovement):
 
         return self.compute_combined_acqf(acqf, p_feas)
 
-    def compute_feas_post(self, X):
-        """computes the posterior P(infeasible|X)
-        Args:
-                X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
-        """
-        with gpytorch.settings.cholesky_jitter(1e-1):
-            return self.cla_likelihood(
-                self.cla_model(X.float().squeeze(1))
-            ).mean
 
-    def compute_combined_acqf(self, acqf, p_feas):
-        """compute the combined acqusition function"""
-        if self.feas_strategy == "fwa":
-            return acqf * p_feas
-        elif self.feas_strategy == "fca":
-            return acqf
-        elif self.feas_strategy == "fia":
-            return ((1.0 - self.infeas_ratio**self.feas_param) * acqf) + (
-                (self.infeas_ratio**self.feas_param) * (p_feas)
-            )
-        elif "naive-" in self.feas_strategy:
-            if self.use_p_feas_only:
-                return p_feas
-            else:
-                return acqf
-        else:
-            raise NotImplementedError
-
-
-class FeasibilityAwareUCB(UpperConfidenceBound):
+class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 
     def __init__(
         self,
@@ -480,7 +436,6 @@ class FeasibilityAwareUCB(UpperConfidenceBound):
 
 
 
-
 def get_batch_initial_conditions(
     num_restarts,
     batch_size,
@@ -491,7 +446,7 @@ def get_batch_initial_conditions(
     has_descriptors,
     num_chances=15,
     return_raw=False,
-):
+    ):
     """generate batches of initial conditions for a
     random restart optimization subject to some constraints. This uses
     rejection sampling, and might get very inefficient for parameter spaces with

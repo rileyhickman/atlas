@@ -48,7 +48,11 @@ class Parameters():
 		self.olympus = observations.get_params()
 		observations._construct_param_vectors()
 		self.param_vectors = list(observations._params_as_vectors)
-		self.general_dims = general_parameters
+
+		if general_parameters is not None:
+			self.general_dims = general_parameters
+		else:
+			self.general_dims = []
 
 		# dimensions of expanded representations
 		(
@@ -90,20 +94,16 @@ class Parameters():
 	def expanded_dims(self):
 		return self.expanded_raw.shape[1]
 
-	@property
-	def expanded_general_dims(self):
-		# TODO: implement this!
-		return None
 
 	@property
 	def general_mask(self):
 		# TODO: implement this
-		return None
+		return [True if ix in self.general_dims else False for ix in range(len(self.param_space))]
 
 	@property
 	def exp_general_mask(self):
 		# TODO: implement this
-		return None
+		return [True if ix in self.exp_general_dims else False for ix in range(self.expanded_raw.shape[1])]
 
 	@property
 	def cont_dims(self):
@@ -196,7 +196,6 @@ class Parameters():
 				exp_disc_dims.append(dim)
 				if param_ix in self.general_dims:
 					exp_general_dims.append(dim)
-				exp_general_dims.append(dim)
 				dim+=1
 			elif param.type == 'categorical':
 				if self.has_descriptors:
@@ -204,7 +203,7 @@ class Parameters():
 				else:
 					dims = np.arange(dim, dim + len(param.options))
 				if param_ix in self.general_dims:
-					exp_cat_dims.extend(dims)
+					exp_general_dims.extend(dims)
 				dim+=len(dims)
 		return (
 			exp_cont_dims, exp_disc_dims, exp_cat_dims, exp_general_dims

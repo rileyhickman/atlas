@@ -68,6 +68,8 @@ class GeneticOptimizer:
         # if constraints not None, and not a list, put into a list
         if known_constraints is not None and isinstance(known_constraints, list) is False:
             self.known_constraints = [known_constraints]
+        elif known_constraints == None:
+            self.known_constraints = []
         else:
             self.known_constraints = known_constraints
 
@@ -326,15 +328,14 @@ class GeneticOptimizer:
 
         # select best recommendations and return them as param vectors
         acqf_vals = [self.acquisition(x)[0] for x in np.array(population)]
-        # print(acqf_vals)
-        # print(len(acqf_vals))
-        # print(acqf_vals[0].shape)
-        # quit()
+
         best_idxs = np.argsort(acqf_vals)[::-1][:self.batch_size]
         best_batch_pop = np.array(population)[best_idxs]
 
         # TODO: this is pretty hacky...
+        # Does this re-normalize things??
         best_batch_pop_deindex = self.deindexify(best_batch_pop)
+
         best_batch_pop_deindex = reverse_normalize(best_batch_pop_deindex,self._mins_x,self._maxs_x)
 
         best_batch = []
@@ -344,10 +345,10 @@ class GeneticOptimizer:
             for elem, p in zip(best_index, self.param_space):
                 if p.type=='continuous':
                     sample.append(best_deindex[counter])
-                    counter+=0
+                    counter+=1
                 elif p.type == 'discrete':
                     sample.append(best_deindex[counter])
-                    counter+=0
+                    counter+=1
                 elif p.type == 'categorical':
                     sample.append(elem)
                     if self.has_descriptors:

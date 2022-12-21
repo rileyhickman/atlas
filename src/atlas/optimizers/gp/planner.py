@@ -372,14 +372,14 @@ class BoTorchPlanner(BasePlanner):
                     self.cla_model,
                     self.cla_likelihood,
                     self.params_obj,
-                    self.general_parameters,
+                    # self.general_parameters,
                     self.param_space,
+                    f_best_scaled,
                     self.feas_strategy,
                     self.feas_param,
-                    self.infeas_ratio,
-                    self.acqf_min_max,
-                    self.use_p_feas_only,
-                    self.maximize,
+                    infeas_ratio,
+                    acqf_min_max,
+
                 )
             else:
                 msg = f'Acquisition function type {self.acquisition_type} not understood!'
@@ -389,6 +389,7 @@ class BoTorchPlanner(BasePlanner):
             acquisition_optimizer = AcquisitionOptimizer(
                 self.acquisition_optimizer_kind,
                 self.params_obj,
+                self.acquisition_type,
                 self.acqf,
                 self.known_constraints,
                 self.batch_size,
@@ -421,6 +422,11 @@ class BoTorchPlanner(BasePlanner):
             )
         elif self.acquisition_type == 'variance':
             acqf = VarianceBased(reg_model)
+
+        elif self.acquisition_type == 'general':
+            # do not scale the acqf in this case
+            # TODO is this OK?
+            return 0., 1.
 
         samples, _ = propose_randomly(
             num_samples, self.param_space, self.has_descriptors,

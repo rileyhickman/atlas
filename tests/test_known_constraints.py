@@ -55,9 +55,6 @@ def known_constraints_cont(params):
     return True
 
 
-
-
-
 def run_continuous(
     init_design_strategy, batch_size, use_descriptors, num_init_design=5
 ):
@@ -77,11 +74,11 @@ def run_continuous(
 
     planner = BoTorchPlanner(
         goal="minimize",
-        feas_strategy="naive-0",
+        feas_strategy="fwa",
         init_design_strategy=init_design_strategy,
         num_init_design=num_init_design,
         batch_size=batch_size,
-        acquisition_type='variance',
+        acquisition_type='ei',
         acquisition_optimizer_kind='genetic',
         known_constraints=[known_constraints_cont],
     )
@@ -162,6 +159,7 @@ def run_mixed_cat_disc_cont(
 
     if use_descriptors:
         desc_param_0 = [[float(i), float(i)] for i in range(3)]
+        print('here!')
     else:
         desc_param_0 = [None for i in range(3)]
 
@@ -197,7 +195,9 @@ def run_mixed_cat_disc_cont(
         num_init_design=num_init_design,
         batch_size=batch_size,
         use_descriptors=use_descriptors,
-        acquisition_optimizer_kind='gradient',
+        acquisition_optimizer_kind='genetic',
+        # acquisition_type='general',
+        # general_parameters=[0],
     )
 
     planner.set_param_space(param_space)
@@ -205,7 +205,7 @@ def run_mixed_cat_disc_cont(
     campaign = Campaign()
     campaign.set_param_space(param_space)
 
-    BUDGET = num_init_design + batch_size * 4
+    BUDGET = num_init_design + batch_size * 5
 
     while len(campaign.observations.get_values()) < BUDGET:
 
@@ -222,6 +222,6 @@ def run_mixed_cat_disc_cont(
 
 if  __name__ == '__main__':
 
-    run_continuous('random',1,False )
-    #run_categorical('random',1,False )
+    #run_continuous('random',1,False )
+    run_categorical('random',1,False )
     #run_mixed_cat_disc_cont('random',1,False)
