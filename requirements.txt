@@ -1,5 +1,6 @@
 botorch
 matter-chimera
+matter-golem
 scikit-learn
 scipy
 pyDOE
