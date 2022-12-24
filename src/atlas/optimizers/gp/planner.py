@@ -110,6 +110,7 @@ class BoTorchPlanner(BasePlanner):
         scalarizer_kind: Optional[str] = "Hypervolume",
         moo_params: Dict[str, Union[str, float, int, bool, List]] = {},
         goals: Optional[List[str]] = None,
+        golem_config: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ):
         local_args = {

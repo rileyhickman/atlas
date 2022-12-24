@@ -25,6 +25,9 @@ from botorch.optim import (
     optimize_acqf_mixed,
 )
 from gpytorch.mlls import ExactMarginalLogLikelihood
+
+from golem import Golem
+
 from olympus import ParameterVector
 from olympus.campaigns import ParameterSpace
 from olympus.planners import AbstractPlanner, CustomPlanner, Planner
@@ -59,6 +62,10 @@ from atlas.optimizers.utils import (
     reverse_standardize,
 )
 
+from atlas.utils.golem_utils import get_golem_dists
+
+
+
 
 class BasePlanner(CustomPlanner):
     def __init__(
@@ -84,6 +91,7 @@ class BasePlanner(CustomPlanner):
         scalarizer_kind: Optional[str] = "Hypervolume",
         moo_params: Dict[str, Union[str, float, int, bool, List]] = {},
         goals: Optional[List[str]] = None,
+        golem_config: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ):
         AbstractPlanner.__init__(**locals())
@@ -112,6 +120,7 @@ class BasePlanner(CustomPlanner):
         self.scalarizer_kind = scalarizer_kind
         self.moo_params = moo_params
         self.goals = goals
+        self.golem_config = golem_config
 
         # check multiobjective stuff
         if self.is_moo:
@@ -195,6 +204,18 @@ class BasePlanner(CustomPlanner):
             if not all([self.param_space[ix].type in ['discrete', 'categorical'] for ix in self.general_parameters]):
                 msg = 'Only discrete- and categorical-type general parameters are currently supported'
                 Logger.log(msg, 'FATAL')
+
+        # initialize golem
+        if self.golem_config is not None:
+            self.golem_dists = get_golem_dists(self.golem_config, self.param_space)
+            if not self.golem_dists == None:
+                self.golem = Golem(forest_type='dt', ntrees=50, goal='min', verbose=True,) # always minimization goal
+            else:
+                self.golem = None
+        else:
+            self.golem_dists = None
+            self.golem = None
+
 
 
     def build_train_classification_gp(
@@ -303,8 +324,16 @@ class BasePlanner(CustomPlanner):
 
         train_x_cla, train_x_reg = np.array(train_x_cla), np.array(train_x_reg)
 
-        # scale the training data - normalize inputs and standardize outputs
+        # if we are using Golem, fit Golem to current regression training data,
+        # and replace data with its predictions
+        if self.golem is not None:
+            self.golem.fit(X=train_x_reg, y=train_y_reg.flatten())
+            train_y_reg = self.golem.predict(
+                X=train_x_reg, distributions=self.golem_dists,
+            ).reshape(-1, 1)
 
+
+        # scale the training data - normalize inputs and standardize outputs
         self._means_y, self._stds_y = np.mean(train_y_reg, axis=0), np.std(
             train_y_reg, axis=0
         )

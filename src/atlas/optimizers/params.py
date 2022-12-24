@@ -182,7 +182,7 @@ class Parameters():
 		return np.array(expanded), np.array(indexed)
 
 
-	def _get_expanded_dims(self):
+	def _get_expanded_dims(self) -> Tuple[Any]:
 		dim = 0
 		exp_cont_dims, exp_disc_dims, exp_cat_dims = [],[],[]
 		exp_general_dims = []
@@ -255,7 +255,9 @@ class Parameters():
 	    return torch.tensor(np.array(bounds)).T.float()
 
 
-	def param_vectors_to_expanded(self,param_vectors,is_scaled=False,return_scaled=False):
+	def param_vectors_to_expanded(
+		self, param_vectors: List[ParameterVector], is_scaled: bool=False,return_scaled:bool=False
+		) -> np.ndarray:
 		''' Convert from list of ParameterVectors to 2d array of scaled/raw expanded params
 
 		TODO: need to consider the scaling of the ParameterVector inputs, but usually
@@ -288,7 +290,9 @@ class Parameters():
 		return expanded
 
 
-	def param_vectors_to_indexed(self, param_vectors, is_scaled=False, return_scaled=False):
+	def param_vectors_to_indexed(
+		self, param_vectors: List[ParameterVector], is_scaled:bool=False, return_scaled:bool=False
+		) -> np.ndarray:
 		''' Convert from list of ParameterVectors to 2d array of scaled/raw indexed params
 		'''
 		if isinstance(param_vectors, ParameterVector):
@@ -332,7 +336,9 @@ class Parameters():
 
 
 
-	def indexed_to_param_vectors(self, indexed, is_scaled=False, return_scaled=False):
+	def indexed_to_param_vectors(
+		self, indexed: np.ndarray, is_scaled:bool=False, return_scaled:bool=False
+	) -> List[ParameterVector]:
 		''' Convert from 2d array of scaled/raw indexed params to list of ParameterVectors
 
 		TODO: need to deal with scaling for this example ...
@@ -356,7 +362,9 @@ class Parameters():
 		return param_vectors
 
 
-	def indexed_to_expanded(self, indexed, is_scaled=False, return_scaled=False):
+	def indexed_to_expanded(
+		self, indexed: np.ndarray, is_scaled:bool=False, return_scaled:bool=False
+		) -> List[ParameterVector]:
 		''' Convert from 2d array of indexed parameters to 2d array of expanded parameters
 		'''
 		expanded = []

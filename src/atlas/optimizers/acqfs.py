@@ -114,7 +114,6 @@ class FeasibilityAwareVarainceBased(VarianceBased, FeasibilityAwareAcquisition):
         return self.compute_combined_acqf(acqf, p_feas)
 
 
-
 class FeasibilityAwareGeneral(AcquisitionFunction, FeasibilityAwareAcquisition):
     """Abstract feasibilty aware general purpose optimization acquisition function.
     """
