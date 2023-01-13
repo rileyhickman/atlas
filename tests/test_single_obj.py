@@ -18,32 +18,42 @@ CONT = {
         "sobol",
         "lhs",
     ],  # init design strategues
-    "batch_size": [1, 5],  # batch size
+    "batch_size": [1],  # batch size
     "use_descriptors": [False],  # use descriptors
+    "acquisition_type": ['ei', 'ucb', 'variance'],
+    "acquisition_optimizer": ['gradient', 'genetic'],
 }
 
 DISC = {
     "init_design_strategy": ["random"],
-    "batch_size": [1, 5],
+    "batch_size": [1],
     "use_descriptors": [False],
+    "acquisition_type": ['ei', 'ucb', 'variance'],
+    "acquisition_optimizer": ['gradient', 'genetic'],
 }
 
 CAT = {
     "init_design_strategy": ["random"],
-    "batch_size": [1, 5],
+    "batch_size": [1],
     "use_descriptors": [False, True],
+    "acquisition_type": ['ei', 'ucb', 'variance'],
+    "acquisition_optimizer": ['gradient', 'genetic'],
 }
 
 MIXED_CAT_CONT = {
     "init_design_strategy": ["random"],
     "batch_size": [1],
     "use_descriptors": [False, True],
+    "acquisition_type": ['ei', 'ucb', 'variance'],
+    "acquisition_optimizer": ['gradient', 'genetic'],
 }
 
 MIXED_DISC_CONT = {
     "init_design_strategy": ["random"],
     "batch_size": [1],
     "use_descriptors": [False],
+    "acquisition_type": ['ei', 'ucb', 'variance'],
+    "acquisition_optimizer": ['gradient', 'genetic'],
 }
 
 
@@ -51,34 +61,40 @@ MIXED_CAT_DISC = {
     "init_design_strategy": ["random"],
     "batch_size": [1],
     "use_descriptors": [False, True],
+    "acquisition_type": ['ei', 'ucb', 'variance'],
+    "acquisition_optimizer": ['gradient', 'genetic'],
 }
 
 MIXED_CAT_DISC_CONT = {
     "init_design_strategy": ["random"],
     "batch_size": [1],
     "use_descriptors": [False, True],
+    "acquisition_type": ['ei', 'ucb', 'variance'],
+    "acquisition_optimizer": ['gradient', 'genetic'],
 }
 
 
 @pytest.mark.parametrize("init_design_strategy", CONT["init_design_strategy"])
 @pytest.mark.parametrize("batch_size", CONT["batch_size"])
 @pytest.mark.parametrize("use_descriptors", CONT["use_descriptors"])
-def test_init_design_cont(init_design_strategy, batch_size, use_descriptors):
-    run_continuous(init_design_strategy, batch_size, use_descriptors)
+@pytest.mark.parametrize("acquisition_type", CONT["acquisition_type"])
+@pytest.mark.parametrize("acquisition_optimizer", CONT["acquisition_optimizer"])
+def test_init_design_cont(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer):
+    run_continuous(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer)
 
 
 @pytest.mark.parametrize("init_design_strategy", DISC["init_design_strategy"])
 @pytest.mark.parametrize("batch_size", DISC["batch_size"])
 @pytest.mark.parametrize("use_descriptors", DISC["use_descriptors"])
-def test_init_design_disc(init_design_strategy, batch_size, use_descriptors):
-    run_discrete(init_design_strategy, batch_size, use_descriptors)
+def test_init_design_disc(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer):
+    run_discrete(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer)
 
 
 @pytest.mark.parametrize("init_design_strategy", CAT["init_design_strategy"])
 @pytest.mark.parametrize("batch_size", CAT["batch_size"])
 @pytest.mark.parametrize("use_descriptors", CAT["use_descriptors"])
-def test_init_design_cat(init_design_strategy, batch_size, use_descriptors):
-    run_categorical(init_design_strategy, batch_size, use_descriptors)
+def test_init_design_cat(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer):
+    run_categorical(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer)
 
 
 @pytest.mark.parametrize(
@@ -87,9 +103,9 @@ def test_init_design_cat(init_design_strategy, batch_size, use_descriptors):
 @pytest.mark.parametrize("batch_size", MIXED_CAT_CONT["batch_size"])
 @pytest.mark.parametrize("use_descriptors", MIXED_CAT_CONT["use_descriptors"])
 def test_init_design_mixed_cat_cont(
-    init_design_strategy, batch_size, use_descriptors
+    init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer
 ):
-    run_mixed_cat_cont(init_design_strategy, batch_size, use_descriptors)
+    run_mixed_cat_cont(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer)
 
 
 @pytest.mark.parametrize(
@@ -98,9 +114,9 @@ def test_init_design_mixed_cat_cont(
 @pytest.mark.parametrize("batch_size", MIXED_DISC_CONT["batch_size"])
 @pytest.mark.parametrize("use_descriptors", MIXED_DISC_CONT["use_descriptors"])
 def test_init_design_mixed_disc_cont(
-    init_design_strategy, batch_size, use_descriptors
+    init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer
 ):
-    run_mixed_disc_cont(init_design_strategy, batch_size, use_descriptors)
+    run_mixed_disc_cont(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer)
 
 
 @pytest.mark.parametrize(
@@ -109,9 +125,9 @@ def test_init_design_mixed_disc_cont(
 @pytest.mark.parametrize("batch_size", MIXED_CAT_DISC["batch_size"])
 @pytest.mark.parametrize("use_descriptors", MIXED_CAT_DISC["use_descriptors"])
 def test_init_design_mixed_cat_disc(
-    init_design_strategy, batch_size, use_descriptors
+    init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer
 ):
-    run_mixed_cat_disc(init_design_strategy, batch_size, use_descriptors)
+    run_mixed_cat_disc(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer)
 
 
 @pytest.mark.parametrize(
@@ -122,13 +138,13 @@ def test_init_design_mixed_cat_disc(
     "use_descriptors", MIXED_CAT_DISC_CONT["use_descriptors"]
 )
 def test_init_design_mixed_cat_disc_cont(
-    init_design_strategy, batch_size, use_descriptors
+    init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer
 ):
-    run_mixed_cat_disc_cont(init_design_strategy, batch_size, use_descriptors)
+    run_mixed_cat_disc_cont(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer)
 
 
 def run_continuous(
-    init_design_strategy, batch_size, use_descriptors, num_init_design=5
+    init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer, num_init_design=5
 ):
     def surface(x):
         return np.sin(8 * x[0]) - 2 * np.cos(6 * x[1]) + np.exp(-2.0 * x[2])
@@ -147,6 +163,8 @@ def run_continuous(
         init_design_strategy=init_design_strategy,
         num_init_design=num_init_design,
         batch_size=batch_size,
+        acquisition_type=acquisition_type,
+        acquisition_optimizer=acquisition_optimizer,
     )
 
     planner.set_param_space(param_space)
@@ -169,7 +187,7 @@ def run_continuous(
 
 
 def run_discrete(
-    init_design_strategy, batch_size, use_descriptors, num_init_design=5
+    init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer, num_init_design=5
 ):
     def surface(x):
         return np.sin(8 * x[0]) - 2 * np.cos(6 * x[1]) + np.exp(-2.0 * x[2])
@@ -196,7 +214,9 @@ def run_discrete(
         feas_strategy="naive-0",
         init_design_strategy=init_design_strategy,
         num_init_design=num_init_design,
-        batch_size=1,
+        batch_size=batch_size,
+        acquisition_type=acquisition_type,
+        acquisition_optimizer=acquisition_optimizer,
     )
 
     planner.set_param_space(param_space)
@@ -219,7 +239,7 @@ def run_discrete(
 
 
 def run_categorical(
-    init_design_strategy, batch_size, use_descriptors, num_init_design=5
+    init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer, num_init_design=5
 ):
 
     surface_kind = "CatDejong"
@@ -235,6 +255,8 @@ def run_categorical(
         num_init_design=num_init_design,
         batch_size=batch_size,
         use_descriptors=use_descriptors,
+        acquisition_type=acquisition_type,
+        acquisition_optimizer=acquisition_optimizer,
     )
     planner.set_param_space(surface.param_space)
 
@@ -254,7 +276,7 @@ def run_categorical(
 
 
 def run_mixed_cat_cont(
-    init_design_strategy, batch_size, use_descriptors, num_init_design=5
+    init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer, num_init_design=5
 ):
 
     param_space = ParameterSpace()
@@ -274,7 +296,6 @@ def run_mixed_cat_cont(
             descriptors=desc_dummy,
         )
     )
-
     # add ligand
     param_space.add(
         ParameterCategorical(
@@ -309,6 +330,8 @@ def run_mixed_cat_cont(
         num_init_design=num_init_design,
         batch_size=batch_size,
         use_descriptors=use_descriptors,
+        acquisition_type=acquisition_type,
+        acquisition_optimizer=acquisition_optimizer,
     )
     planner.set_param_space(param_space)
 
@@ -331,7 +354,7 @@ def run_mixed_cat_cont(
 
 
 def run_mixed_disc_cont(
-    init_design_strategy, batch_size, use_descriptors, num_init_design=5
+    init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer, num_init_design=5
 ):
     def surface(x):
         return np.sin(8 * x[0]) - 2 * np.cos(6 * x[1]) + np.exp(-2.0 * x[2])
@@ -353,6 +376,8 @@ def run_mixed_disc_cont(
         num_init_design=num_init_design,
         batch_size=batch_size,
         use_descriptors=use_descriptors,
+        acquisition_type=acquisition_type,
+        acquisition_optimizer=acquisition_optimizer,
     )
 
     planner.set_param_space(param_space)
@@ -375,7 +400,7 @@ def run_mixed_disc_cont(
 
 
 def run_mixed_cat_disc(
-    init_design_strategy, batch_size, use_descriptors, num_init_design=5
+    init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer, num_init_design=5
 ):
     def surface(x):
         if x["param_0"] == "x0":
@@ -422,6 +447,8 @@ def run_mixed_cat_disc(
         num_init_design=num_init_design,
         batch_size=batch_size,
         use_descriptors=use_descriptors,
+        acquisition_type=acquisition_type,
+        acquisition_optimizer=acquisition_optimizer,
     )
 
     planner.set_param_space(param_space)
@@ -444,7 +471,7 @@ def run_mixed_cat_disc(
 
 
 def run_mixed_cat_disc_cont(
-    init_design_strategy, batch_size, use_descriptors, num_init_design=5
+    init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer, num_init_design=5
 ):
     def surface(x):
         if x["param_0"] == "x0":
@@ -499,6 +526,8 @@ def run_mixed_cat_disc_cont(
         num_init_design=num_init_design,
         batch_size=batch_size,
         use_descriptors=use_descriptors,
+        acquisition_type=acquisition_type,
+        acquisition_optimizer=acquisition_optimizer,
     )
 
     planner.set_param_space(param_space)

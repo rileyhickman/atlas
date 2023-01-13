@@ -2,54 +2,168 @@
 
 import numpy as np
 import pytest
+from golem import *
+from olympus.campaigns import Campaign, ParameterSpace
 from olympus.objects import (
-    Campaign,
     ParameterCategorical,
     ParameterContinuous,
     ParameterDiscrete,
-    ParameterSpace,
     ParameterVector,
 )
+from olympus.surfaces import Surface
 
 from atlas.optimizers.gp.planner import BoTorchPlanner
+from atlas.utils.golem_utils import get_golem_dists
+
+CONT = {
+    "golem_config": [
+        # param config as dictionaries
+        {
+            "name": "dicts",
+            "config": {
+                "param0": {"dist_type": "Normal", "dist_params": {"std": 0.2}},
+                "param1": {"dist_type": "Normal", "dist_params": {"std": 0.3}},
+            },
+        },
+        # params as Golem distribution objects
+        {
+            "name": "objects",
+            "config": {
+                "param0": Normal(0.2),
+                "param1": Normal(0.3),
+            },
+        },
+        # missing parameters
+        {
+            "name": "missing_param",
+            "config": {
+                "param0": {"dist_type": "Normal", "dist_params": {"std": 0.2}},
+            },
+        },
+        # all parameters = Delta(), should return None
+        {
+            "name": "all_delta",
+            "config": {
+                "param0": {"dist_type": "Delta", "dist_params": None},
+                "param1": {"dist_type": "Delta", "dist_params": None},
+            },
+        },
+    ]
+}
 
 
-class Bertsimas:
-    def __init__(self):
+@pytest.mark.parametrize("golem_config", CONT["golem_config"])
+def test_get_golem_dists_cont(golem_config):
 
-        self.xlims = [-1, 3.2]
-        self.ylims = [-0.5, 4.4]
-        self.minimum = [2.8, 4.0]
+    test_name = golem_config["name"]
+    config = golem_config["config"]
 
-    @staticmethod
-    def eval(params):
-        x0 = params["x0"]
-        x1 = params["x1"]
-        f = (
-            2 * (x0**6)
-            - 12.2 * (x0**5)
-            + 21.2 * (x0**4)
-            + 6.2 * x0
-            - 6.4 * (x0**3)
-            - 4.7 * (x0**2)
-            + x1**6
-            - 11 * (x1**5)
-            + 43.3 * (x1**4)
-            - 10 * x1
-            - 74.8 * (x1**3)
-            + 56.9 * (x1**2)
-            - 4.1 * x0 * x1
-            - 0.1 * (x1**2) * (x0**2)
-            + 0.4 * (x1**2) * x0
-            + 0.4 * (x0**2) * x1
-        )
-        return f
+    param_space = ParameterSpace()
+    param_space.add(ParameterContinuous(name="param0"))
+    param_space.add(ParameterContinuous(name="param1"))
+
+    dists = get_golem_dists(config, param_space)
+
+    if test_name in ["dicts", "objects"]:
+        assert all([isinstance(dist, Normal) for dist in dists])
+    elif test_name == "missing_param":
+        assert isinstance(dists[0], Normal)
+        assert isinstance(dists[1], Delta)
+    elif test_name == "all_delta":
+        assert dists is None
 
 
-def run_continuous(
-    init_design_strategy, batch_size, use_descriptors, num_init_design=5
-):
+# @pytest.mark.parametrize("golem_config", MIXED["golem_config"])
+# def test_get_golem_dists_mixed(golem_config):
+#
+#     test_name = golem_config['name']
+#     config = golem_config['config']
+#
+#     param_space = ParameterSpace()
+#     param_0 = ParameterCategorical(
+#         name="param_0",
+#         options=["x0", "x1", "x2"],
+#         descriptors=desc_param_0,
+#     )
+#     param_1 = ParameterDiscrete(
+#         name="param_1",
+#         options=[0.0, 0.25, 0.5, 0.75, 1.0],
+#     )
+#     param_2 = ParameterContinuous(
+#         name="param_2",
+#         low=0.0,
+#         high=1.0,
+#     )
+#     param_3 = ParameterContinuous(
+#         name="param_3",
+#         low=0.0,
+#         high=1.0,
+#     )
+#     param_space.add(param_0)
+#     param_space.add(param_1)
+#     param_space.add(param_2)
+#     param_space.add(param_3)
+#
+#
+#     dists = get_golem_dists(config, param_space)
 
-    surf = Bertsimas()
 
-    return None
+def test_golem_opt_cont():
+    def surface(x):
+        return np.sin(8 * x[0]) - 2 * np.cos(6 * x[1]) + np.exp(-2.0 * x[2])
+
+    param_space = ParameterSpace()
+    param_0 = ParameterContinuous(name="param0", low=0.0, high=1.0)
+    param_1 = ParameterContinuous(name="param1", low=0.0, high=1.0)
+    param_2 = ParameterContinuous(name="param2", low=0.0, high=1.0)
+    param_space.add(param_0)
+    param_space.add(param_1)
+    param_space.add(param_2)
+
+    planner = BoTorchPlanner(
+        goal="minimize",
+        feas_strategy="naive-0",
+        init_design_strategy="lhs",
+        num_init_design=5,
+        batch_size=1,
+        acquisition_type="ei",
+        acquisition_optimizer="gradient",
+        golem_config={
+            "param0": Normal(0.2),
+            "param1": Normal(0.3),
+        },
+    )
+
+    planner.set_param_space(param_space)
+
+    campaign = Campaign()
+    campaign.set_param_space(param_space)
+
+    BUDGET = 10
+
+    while len(campaign.observations.get_values()) < BUDGET:
+
+        samples = planner.recommend(campaign.observations)
+        for sample in samples:
+            sample_arr = sample.to_array()
+            measurement = surface(sample_arr)
+            campaign.add_observation(sample_arr, measurement)
+
+    assert len(campaign.observations.get_params()) == BUDGET
+    assert len(campaign.observations.get_values()) == BUDGET
+
+
+# def test_golem_opt_mixed(golem_config):
+#     ...
+
+
+if __name__ == "__main__":
+
+    # test_get_golem_dists_cont(CONT['golem_config'][0])
+
+    test_golem_opt_cont(
+        golem_config={
+            "param0": Normal(0.2),
+            "param1": Normal(0.3),
+        }
+    )

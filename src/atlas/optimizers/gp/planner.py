@@ -13,6 +13,7 @@ import olympus
 import torch
 from botorch.acquisition import (
     ExpectedImprovement,
+    UpperConfidenceBound,
     qExpectedImprovement,
     qNoisyExpectedImprovement,
 )
@@ -35,7 +36,8 @@ from atlas.optimizers.acqfs import (
     FeasibilityAwareEI,
     FeasibilityAwareGeneral,
     FeasibilityAwareQEI,
-    FeasibilityAwareUCB,
+    FeasibilityAwareVarainceBased,
+    VarianceBased,
     create_available_options,
     get_batch_initial_conditions,
 )
@@ -47,11 +49,11 @@ from atlas.optimizers.gps import (
     CategoricalSingleTaskGP,
     ClassificationGPMatern,
 )
+from atlas.optimizers.params import Parameters
 from atlas.optimizers.utils import (
     cat_param_to_feat,
     forward_normalize,
     forward_standardize,
-    get_bounds,
     get_cat_dims,
     get_fixed_features_list,
     infer_problem_type,
@@ -94,18 +96,20 @@ class BoTorchPlanner(BasePlanner):
         use_descriptors: bool = False,
         num_init_design: int = 5,
         init_design_strategy: str = "random",
-        acquisition_type: str = "ei",  # ei, ucb
+        acquisition_type: str = "ei",  # ei, ucb, variance, general
         acquisition_optimizer_kind: str = "gradient",  # gradient, genetic
         vgp_iters: int = 2000,
         vgp_lr: float = 0.1,
         max_jitter: float = 1e-1,
         cla_threshold: float = 0.5,
         known_constraints: Optional[List[Callable]] = None,
+        general_parameters: Optional[List[int]] = None,
         is_moo: bool = False,
         value_space: Optional[ParameterSpace] = None,
         scalarizer_kind: Optional[str] = "Hypervolume",
         moo_params: Dict[str, Union[str, float, int, bool, List]] = {},
         goals: Optional[List[str]] = None,
+        golem_config: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ):
         local_args = {
@@ -187,6 +191,7 @@ class BoTorchPlanner(BasePlanner):
                     1  # batch_size always 1 for init design planner
                 )
         else:
+
             # use GP surrogate to propose the samples
             # get the scaled parameters and values for both the regression and classification data
             (
@@ -348,35 +353,47 @@ class BoTorchPlanner(BasePlanner):
                     acqf_min_max,
                     beta=torch.tensor([0.2]).repeat(self.batch_size),
                 )
-
+            elif self.acquisition_type == "variance":
+                self.acqf = FeasibilityAwareVarainceBased(
+                    self.reg_model,
+                    self.cla_model,
+                    self.cla_likelihood,
+                    self.param_space,
+                    f_best_scaled,
+                    self.feas_strategy,
+                    self.feas_param,
+                    infeas_ratio,
+                    acqf_min_max,
+                )
+            elif self.acquisition_type == "general":
+                self.acqf = FeasibilityAwareGeneral(
+                    self.reg_model,
+                    self.cla_model,
+                    self.cla_likelihood,
+                    self.params_obj,
+                    # self.general_parameters,
+                    self.param_space,
+                    f_best_scaled,
+                    self.feas_strategy,
+                    self.feas_param,
+                    infeas_ratio,
+                    acqf_min_max,
+                )
             else:
                 msg = f"Acquisition function type {self.acquisition_type} not understood!"
                 Logger.log(msg, "FATAL")
 
-            bounds = get_bounds(
-                self.param_space,
-                self._mins_x,
-                self._maxs_x,
-                self.has_descriptors,
-            )
-
-            # -------------------------------
             # optimize acquisition function
-            # -------------------------------
-
             acquisition_optimizer = AcquisitionOptimizer(
                 self.acquisition_optimizer_kind,
-                self.param_space,
+                self.params_obj,
+                self.acquisition_type,
                 self.acqf,
-                bounds,
                 self.known_constraints,
                 self.batch_size,
                 self.feas_strategy,
                 self.fca_constraint,
-                self.has_descriptors,
                 self._params,
-                self._mins_x,
-                self._maxs_x,
             )
             return_params = acquisition_optimizer.optimize()
 
@@ -392,20 +409,32 @@ class BoTorchPlanner(BasePlanner):
         the feasibility contribution. These values will be used to approximately
         normalize the acquisition function
         """
-        if self.batch_size == 1:
+        if self.acquisition_type == "ei":
             acqf = ExpectedImprovement(
                 reg_model, f_best_scaled, objective=None, maximize=False
             )
-        elif self.batch_size > 1:
-            acqf = qExpectedImprovement(
-                reg_model, f_best_scaled, objective=None, maximize=False
+
+        elif self.acquisition_type == "ucb":
+            acqf = UpperConfidenceBound(
+                reg_model,
+                beta=torch.tensor([0.2]).repeat(self.batch_size),
+                objective=None,
+                maximize=False,
             )
+        elif self.acquisition_type == "variance":
+            acqf = VarianceBased(reg_model)
+
+        elif self.acquisition_type == "general":
+            # do not scale the acqf in this case
+            # TODO is this OK?
+            return 0.0, 1.0
+
         samples, _ = propose_randomly(
-            num_samples, self.param_space, self.has_descriptors
+            num_samples,
+            self.param_space,
+            self.has_descriptors,
         )
-        # if not self.problem_type=='fully_categorical' and not self.has_descriptors:
-        # 	# we dont scale the parameters if we have a one-hot-encoded representation
-        # 	samples = forward_normalize(samples, self._mins_x, self._maxs_x)
+
         if (
             self.problem_type == "fully_categorical"
             and not self.has_descriptors
@@ -414,7 +443,9 @@ class BoTorchPlanner(BasePlanner):
             pass
         else:
             # scale the parameters
-            samples = forward_normalize(samples, self._mins_x, self._maxs_x)
+            samples = forward_normalize(
+                samples, self.params_obj._mins_x, self.params_obj._maxs_x
+            )
 
         acqf_vals = acqf(
             torch.tensor(samples)

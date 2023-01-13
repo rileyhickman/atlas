@@ -19,11 +19,11 @@ from atlas.optimizers.acqfs import (
     create_available_options,
     get_batch_initial_conditions,
 )
+from atlas.optimizers.params import Parameters
 from atlas.optimizers.utils import (
     cat_param_to_feat,
     forward_normalize,
     forward_standardize,
-    get_bounds,
     get_cat_dims,
     get_fixed_features_list,
     infer_problem_type,
@@ -36,30 +36,27 @@ from atlas.optimizers.utils import (
 class GradientOptimizer:
     def __init__(
         self,
-        param_space: ParameterSpace,
+        params_obj: Parameters,
         acqf: AcquisitionFunction,
-        bounds: torch.Tensor,
         known_constraints: Callable,
         batch_size: int,
         feas_strategy: str,
         fca_constraint: Callable,
-        has_descriptors: bool,
         params: torch.Tensor,
-        mins_x: torch.Tensor,
-        maxs_x: torch.Tensor,
     ):
-        self.param_space = param_space
+        self.params_obj = params_obj
+        self.param_space = self.params_obj.param_space
         self.problem_type = infer_problem_type(self.param_space)
         self.acqf = acqf
-        self.bounds = bounds
+        self.bounds = self.params_obj.bounds
         self.known_constraints = known_constraints
         self.batch_size = batch_size
         self.feas_strategy = feas_strategy
         self.fca_constraint = fca_constraint
-        self.has_descriptors = has_descriptors
+        self.has_descriptors = self.params_obj.has_descriptors
         self._params = params
-        self._mins_x = mins_x
-        self._maxs_x = maxs_x
+        self._mins_x = self.params_obj._mins_x
+        self._maxs_x = self.params_obj._maxs_x
 
         self.choices_feat, self.choices_cat = None, None
 
