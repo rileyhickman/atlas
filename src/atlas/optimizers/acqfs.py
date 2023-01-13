@@ -7,7 +7,11 @@ import gpytorch
 import numpy as np
 import pandas as pd
 import torch
-from botorch.acquisition import AcquisitionFunction, ExpectedImprovement, UpperConfidenceBound
+from botorch.acquisition import (
+    AcquisitionFunction,
+    ExpectedImprovement,
+    UpperConfidenceBound,
+)
 from botorch.acquisition.monte_carlo import (
     qExpectedImprovement,
     qNoisyExpectedImprovement,
@@ -307,9 +311,7 @@ class FeasibilityAwareEI(ExpectedImprovement):
             raise NotImplementedError
 
 
-
 class FeasibilityAwareUCB(UpperConfidenceBound):
-
     def __init__(
         self,
         reg_model,
@@ -387,11 +389,6 @@ class FeasibilityAwareUCB(UpperConfidenceBound):
                 return acqf
         else:
             raise NotImplementedError
-
-
-
-
-
 
 
 def get_batch_initial_conditions(

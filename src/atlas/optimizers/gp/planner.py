@@ -33,9 +33,9 @@ from olympus.scalarizers import Scalarizer
 from atlas import Logger
 from atlas.optimizers.acqfs import (
     FeasibilityAwareEI,
-    FeasibilityAwareUCB,
     FeasibilityAwareGeneral,
     FeasibilityAwareQEI,
+    FeasibilityAwareUCB,
     create_available_options,
     get_batch_initial_conditions,
 )
@@ -94,7 +94,7 @@ class BoTorchPlanner(BasePlanner):
         use_descriptors: bool = False,
         num_init_design: int = 5,
         init_design_strategy: str = "random",
-        acquisition_type: str = 'ei',  # ei, ucb
+        acquisition_type: str = "ei",  # ei, ucb
         acquisition_optimizer_kind: str = "gradient",  # gradient, genetic
         vgp_iters: int = 2000,
         vgp_lr: float = 0.1,
@@ -305,8 +305,8 @@ class BoTorchPlanner(BasePlanner):
             # get the approximate max and min of the acquisition function without the feasibility contribution
             acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled)
 
-            if self.acquisition_type == 'ei':
-                if self.batch_size==1:
+            if self.acquisition_type == "ei":
+                if self.batch_size == 1:
                     self.acqf = FeasibilityAwareEI(
                         self.reg_model,
                         self.cla_model,
@@ -335,7 +335,7 @@ class BoTorchPlanner(BasePlanner):
                         acqf_min_max,
                     )
 
-            elif self.acquisition_type == 'ucb':
+            elif self.acquisition_type == "ucb":
                 self.acqf = FeasibilityAwareUCB(
                     self.reg_model,
                     self.cla_model,
@@ -350,9 +350,8 @@ class BoTorchPlanner(BasePlanner):
                 )
 
             else:
-                msg = f'Acquisition function type {self.acquisition_type} not understood!'
-                Logger.log(msg, 'FATAL')
-
+                msg = f"Acquisition function type {self.acquisition_type} not understood!"
+                Logger.log(msg, "FATAL")
 
             bounds = get_bounds(
                 self.param_space,

@@ -31,6 +31,8 @@ from olympus.planners import AbstractPlanner, CustomPlanner, Planner
 from olympus.scalarizers import Scalarizer
 from rich.progress import track
 
+from golem import *
+
 from atlas import Logger
 from atlas.optimizers.acqfs import (
     FeasibilityAwareEI,
@@ -71,7 +73,7 @@ class BasePlanner(CustomPlanner):
         use_descriptors: bool = False,
         num_init_design: int = 5,
         init_design_strategy: str = "random",
-        acquisition_type: str = 'ei',  # ei, ucb
+        acquisition_type: str = "ei",  # ei, ucb
         acquisition_optimizer_kind: str = "gradient",  # gradient, genetic
         vgp_iters: int = 2000,
         vgp_lr: float = 0.1,
@@ -83,8 +85,17 @@ class BasePlanner(CustomPlanner):
         scalarizer_kind: Optional[str] = "Hypervolume",
         moo_params: Dict[str, Union[str, float, int, bool, List]] = {},
         goals: Optional[List[str]] = None,
+        golem_config: Optional[Dict[str, Any]],
         **kwargs: Any,
     ):
+        """ Base optimizer class containing higher-level operations.
+
+        The golem_config argument is a dictionary with the following keys
+            distributions - 
+
+        Args:
+
+        """
         AbstractPlanner.__init__(**locals())
         self.goal = goal
         self.feas_strategy = feas_strategy
@@ -114,11 +125,11 @@ class BasePlanner(CustomPlanner):
         # check multiobjective stuff
         if self.is_moo:
             if self.goals is None:
-                message = f"You must individual goals for multiobjective optimization"
+                message = f"You must provide individual goals for multi-objective optimization"
                 Logger.log(message, "FATAL")
 
             if self.goal == "maximize":
-                message = "Overall goal must be set to minimization for multiobjective optimization. Updating ..."
+                message = "Overall goal must be set to minimization for multi-objective optimization. Updating ..."
                 Logger.log(message, "WARNING")
                 self.goal = "minimize"
 
@@ -267,7 +278,6 @@ class BasePlanner(CustomPlanner):
             # generate the regression dataset
             params_reg = self._params[feas_ix].reshape(-1, 1)
             train_y_reg = self._values[feas_ix].reshape(-1, 1)
-
 
         train_x_cla, train_x_reg = [], []
 
