@@ -11,19 +11,14 @@ import gpytorch
 import numpy as np
 import olympus
 import torch
-from botorch.acquisition import (
-    ExpectedImprovement,
-    qExpectedImprovement,
-    qNoisyExpectedImprovement,
-)
+from botorch.acquisition import (ExpectedImprovement, qExpectedImprovement,
+                                 qNoisyExpectedImprovement)
 from botorch.fit import fit_gpytorch_model
 from botorch.models import MixedSingleTaskGP, SingleTaskGP
 from botorch.models.kernels.categorical import CategoricalKernel
-from botorch.optim import (
-    optimize_acqf,
-    optimize_acqf_discrete,
-    optimize_acqf_mixed,
-)
+from botorch.optim import (optimize_acqf, optimize_acqf_discrete,
+                           optimize_acqf_mixed)
+from golem import *
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from olympus import ParameterVector
 from olympus.campaigns import ParameterSpace
@@ -31,35 +26,21 @@ from olympus.planners import AbstractPlanner, CustomPlanner, Planner
 from olympus.scalarizers import Scalarizer
 from rich.progress import track
 
-from golem import *
-
 from atlas import Logger
-from atlas.optimizers.acqfs import (
-    FeasibilityAwareEI,
-    FeasibilityAwareGeneral,
-    FeasibilityAwareQEI,
-    create_available_options,
-    get_batch_initial_conditions,
-)
-from atlas.optimizers.acquisition_optimizers.base_optimizer import (
-    AcquisitionOptimizer,
-)
-from atlas.optimizers.gps import (
-    CategoricalSingleTaskGP,
-    ClassificationGPMatern,
-)
-from atlas.optimizers.utils import (
-    cat_param_to_feat,
-    forward_normalize,
-    forward_standardize,
-    get_bounds,
-    get_cat_dims,
-    get_fixed_features_list,
-    infer_problem_type,
-    propose_randomly,
-    reverse_normalize,
-    reverse_standardize,
-)
+from atlas.optimizers.acqfs import (FeasibilityAwareEI,
+                                    FeasibilityAwareGeneral,
+                                    FeasibilityAwareQEI,
+                                    create_available_options,
+                                    get_batch_initial_conditions)
+from atlas.optimizers.acquisition_optimizers.base_optimizer import \
+    AcquisitionOptimizer
+from atlas.optimizers.gps import (CategoricalSingleTaskGP,
+                                  ClassificationGPMatern)
+from atlas.optimizers.utils import (cat_param_to_feat, forward_normalize,
+                                    forward_standardize, get_bounds,
+                                    get_cat_dims, get_fixed_features_list,
+                                    infer_problem_type, propose_randomly,
+                                    reverse_normalize, reverse_standardize)
 
 
 class BasePlanner(CustomPlanner):

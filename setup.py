@@ -30,6 +30,12 @@ setup(
     package_dir={"": "src"},
     zip_safe=False,
     tests_require=["pytest"],
-    install_requires=["numpy", "pandas", "botorch", "matter-chimera", "matter-golem"],
+    install_requires=[
+        "numpy",
+        "pandas",
+        "botorch",
+        "matter-chimera",
+        "matter-golem",
+    ],
     python_requires=">=3.6",
 )
