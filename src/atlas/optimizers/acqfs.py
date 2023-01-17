@@ -32,6 +32,7 @@ class FeasibilityAwareAcquisition:
                 self.cla_model(X.float().squeeze(1))
             ).mean
 
+
     def compute_combined_acqf(self, acqf, p_feas):
         """compute the combined acqusition function"""
         if self.feas_strategy == "fwa":
@@ -293,7 +294,6 @@ class FeasibilityAwareQEI(qExpectedImprovement, FeasibilityAwareAcquisition):
         return self.compute_combined_acqf(acqf, p_feas)
 
 
-
 class FeasibilityAwareEI(ExpectedImprovement, FeasibilityAwareAcquisition):
     """Abstract feasibility aware expected improvement acquisition function. Compatible
     with the FIA, FCA and FWA strategies, as well as any of the naive strategies.
@@ -352,6 +352,15 @@ class FeasibilityAwareEI(ExpectedImprovement, FeasibilityAwareAcquisition):
 
         return self.compute_combined_acqf(acqf, p_feas)
 
+    def forward_unconstrained(self, X):
+        """ evaluates the acquisition function without the
+        feasibility portion, i.e. $\alpha(x)$ in the paper
+        """
+        acqf = super().forward(X)
+        return acqf
+
+
+
 
 class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 
@@ -405,33 +414,41 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 
         return self.compute_combined_acqf(acqf, p_feas)
 
-    def compute_feas_post(self, X):
-        """computes the posterior P(infeasible|X)
-        Args:
-                X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
+    def forward_unconstrained(self, X):
+        """ evaluates the acquisition function without the
+        feasibility portion, i.e. $\alpha(x)$ in the paper
         """
-        with gpytorch.settings.cholesky_jitter(1e-1):
-            return self.cla_likelihood(
-                self.cla_model(X.float().squeeze(1))
-            ).mean
+        acqf = super().forward(X)
+        return acqf
 
-    def compute_combined_acqf(self, acqf, p_feas):
-        """compute the combined acqusition function"""
-        if self.feas_strategy == "fwa":
-            return acqf * p_feas
-        elif self.feas_strategy == "fca":
-            return acqf
-        elif self.feas_strategy == "fia":
-            return ((1.0 - self.infeas_ratio**self.feas_param) * acqf) + (
-                (self.infeas_ratio**self.feas_param) * (p_feas)
-            )
-        elif "naive-" in self.feas_strategy:
-            if self.use_p_feas_only:
-                return p_feas
-            else:
-                return acqf
-        else:
-            raise NotImplementedError
+
+    # def compute_feas_post(self, X):
+    #     """computes the posterior P(infeasible|X)
+    #     Args:
+    #             X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
+    #     """
+    #     with gpytorch.settings.cholesky_jitter(1e-1):
+    #         return self.cla_likelihood(
+    #             self.cla_model(X.float().squeeze(1))
+    #         ).mean
+    #
+    # def compute_combined_acqf(self, acqf, p_feas):
+    #     """compute the combined acqusition function"""
+    #     if self.feas_strategy == "fwa":
+    #         return acqf * p_feas
+    #     elif self.feas_strategy == "fca":
+    #         return acqf
+    #     elif self.feas_strategy == "fia":
+    #         return ((1.0 - self.infeas_ratio**self.feas_param) * acqf) + (
+    #             (self.infeas_ratio**self.feas_param) * (p_feas)
+    #         )
+    #     elif "naive-" in self.feas_strategy:
+    #         if self.use_p_feas_only:
+    #             return p_feas
+    #         else:
+    #             return acqf
+    #     else:
+    #         raise NotImplementedError
 
 
 

@@ -430,6 +430,9 @@ class BasePlanner(CustomPlanner):
 
         return pred_mu, pred_sigma
 
+
+
+
     def cla_surrogate(
         self,
         X: torch.Tensor,
@@ -490,6 +493,7 @@ class BasePlanner(CustomPlanner):
         X: torch.Tensor,
         return_np: bool = True,
         normalize: bool = True,
+        unconstrained: bool = False,
     ) -> Union[torch.Tensor, np.ndarray]:
 
         X_proc = []
@@ -522,9 +526,11 @@ class BasePlanner(CustomPlanner):
             # scale the parameters
             X_proc = forward_normalize(X_proc, self.params_obj._mins_x, self.params_obj._maxs_x)
 
-        acqf_vals = self.acqf(
-            X_proc.view(X_proc.shape[0], 1, X_proc.shape[-1])
-        ).detach()
+        X_proc = X_proc.view(X_proc.shape[0], 1, X_proc.shape[-1])
+        if unconstrained:
+            acqf_vals = self.acqf.forward_unconstrained(X_proc).detach()
+        else:
+            acqf_vals = self.acqf(X_proc).detach()
 
         acqf_vals = acqf_vals.view(acqf_vals.shape[0], 1)
 
@@ -537,6 +543,8 @@ class BasePlanner(CustomPlanner):
             acqf_vals = acqf_vals.numpy()
 
         return acqf_vals
+
+
 
     def _tell(self, observations: olympus.campaigns.observations.Observations):
         """unpack the current observations from Olympus

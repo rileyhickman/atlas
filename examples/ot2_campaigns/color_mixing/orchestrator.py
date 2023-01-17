@@ -125,7 +125,7 @@ class Orchestrator:
 
     def compute_volumes(self, func_params):
         # func_params are just red, yellow, blue
-        func_params_arr = func_params[0].to_array() 
+        func_params_arr = func_params[0].to_array()
 
         full_params_arr = np.array([func_params_arr / np.sum(func_params_arr)])
 
@@ -250,7 +250,7 @@ class Orchestrator:
                 func_batch_params
             )
 
-            
+
             print('\nPROPOSED FUNC PARAMS : ', func_batch_params)
 
             print("\nPROPOSED PARAMS : ", full_batch_params)
@@ -277,7 +277,7 @@ class Orchestrator:
 
             # execute the color mixing i.e. sample prep + measurement of loss with the
             # webcam and opencv
-        
+
             input("Press Enter once OT-2 protocol is complete...")
 
             print("Removing files...")
