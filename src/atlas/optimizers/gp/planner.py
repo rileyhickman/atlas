@@ -37,6 +37,7 @@ from atlas.optimizers.acqfs import (
     FeasibilityAwareGeneral,
     FeasibilityAwareQEI,
     FeasibilityAwareVarainceBased,
+    FeasibilityAwareUCB,
     VarianceBased,
     create_available_options,
     get_batch_initial_conditions,

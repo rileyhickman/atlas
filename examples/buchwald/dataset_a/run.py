@@ -46,11 +46,11 @@ bests = pickle.load(
 
 
 MODELS = [
-    "RandomSearch",
+    #"RandomSearch",
     #'Gpyopt',
     "Botorch",
-    "RGPE",
-    "DKT",
+    #"RGPE",
+    #"DKT",
 ]
 
 META_PLANNERS = [
@@ -152,7 +152,7 @@ for model_kind in MODELS:
                     batch_size=1,
                 )
 
-                planner.set_param_space(campaign.param_space)
+                planner._set_param_space(campaign.param_space)
 
                 # start the optimization experiment
                 iteration = 0

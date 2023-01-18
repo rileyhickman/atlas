@@ -3,7 +3,7 @@
 import os
 import pickle
 import sys
-
+import shutil
 import numpy as np
 import olympus
 from olympus.campaigns import Campaign

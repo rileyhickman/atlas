@@ -27,6 +27,7 @@ from botorch.optim import (
 from golem import *
 from golem import Golem
 from gpytorch.mlls import ExactMarginalLogLikelihood
+
 from olympus import ParameterVector
 from olympus.campaigns import ParameterSpace
 from olympus.planners import AbstractPlanner, CustomPlanner, Planner
