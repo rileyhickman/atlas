@@ -13,9 +13,9 @@ import olympus
 import torch
 from botorch.acquisition import (
     ExpectedImprovement,
+    UpperConfidenceBound,
     qExpectedImprovement,
     qNoisyExpectedImprovement,
-    UpperConfidenceBound,
 )
 from botorch.fit import fit_gpytorch_model
 from botorch.models import MixedSingleTaskGP, SingleTaskGP
@@ -34,23 +34,22 @@ from olympus.scalarizers import Scalarizer
 from atlas import Logger
 from atlas.optimizers.acqfs import (
     FeasibilityAwareEI,
-    FeasibilityAwareUCB,
     FeasibilityAwareGeneral,
     FeasibilityAwareQEI,
-    VarianceBased,
     FeasibilityAwareVarainceBased,
+    VarianceBased,
     create_available_options,
     get_batch_initial_conditions,
 )
 from atlas.optimizers.acquisition_optimizers.base_optimizer import (
     AcquisitionOptimizer,
 )
-from atlas.optimizers.params import Parameters
 from atlas.optimizers.base import BasePlanner
 from atlas.optimizers.gps import (
     CategoricalSingleTaskGP,
     ClassificationGPMatern,
 )
+from atlas.optimizers.params import Parameters
 from atlas.optimizers.utils import (
     cat_param_to_feat,
     forward_normalize,
@@ -97,7 +96,7 @@ class BoTorchPlanner(BasePlanner):
         use_descriptors: bool = False,
         num_init_design: int = 5,
         init_design_strategy: str = "random",
-        acquisition_type: str = 'ei',  # ei, ucb, variance, general
+        acquisition_type: str = "ei",  # ei, ucb, variance, general
         acquisition_optimizer_kind: str = "gradient",  # gradient, genetic
         vgp_iters: int = 2000,
         vgp_lr: float = 0.1,
@@ -311,9 +310,8 @@ class BoTorchPlanner(BasePlanner):
             # get the approximate max and min of the acquisition function without the feasibility contribution
             acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled)
 
-
-            if self.acquisition_type == 'ei':
-                if self.batch_size==1:
+            if self.acquisition_type == "ei":
+                if self.batch_size == 1:
                     self.acqf = FeasibilityAwareEI(
                         self.reg_model,
                         self.cla_model,
@@ -342,7 +340,7 @@ class BoTorchPlanner(BasePlanner):
                         acqf_min_max,
                     )
 
-            elif self.acquisition_type == 'ucb':
+            elif self.acquisition_type == "ucb":
                 self.acqf = FeasibilityAwareUCB(
                     self.reg_model,
                     self.cla_model,
@@ -355,7 +353,7 @@ class BoTorchPlanner(BasePlanner):
                     acqf_min_max,
                     beta=torch.tensor([0.2]).repeat(self.batch_size),
                 )
-            elif self.acquisition_type == 'variance':
+            elif self.acquisition_type == "variance":
                 self.acqf = FeasibilityAwareVarainceBased(
                     self.reg_model,
                     self.cla_model,
@@ -367,7 +365,7 @@ class BoTorchPlanner(BasePlanner):
                     infeas_ratio,
                     acqf_min_max,
                 )
-            elif self.acquisition_type == 'general':
+            elif self.acquisition_type == "general":
                 self.acqf = FeasibilityAwareGeneral(
                     self.reg_model,
                     self.cla_model,
@@ -380,11 +378,10 @@ class BoTorchPlanner(BasePlanner):
                     self.feas_param,
                     infeas_ratio,
                     acqf_min_max,
-
                 )
             else:
-                msg = f'Acquisition function type {self.acquisition_type} not understood!'
-                Logger.log(msg, 'FATAL')
+                msg = f"Acquisition function type {self.acquisition_type} not understood!"
+                Logger.log(msg, "FATAL")
 
             # optimize acquisition function
             acquisition_optimizer = AcquisitionOptimizer(
@@ -412,25 +409,30 @@ class BoTorchPlanner(BasePlanner):
         the feasibility contribution. These values will be used to approximately
         normalize the acquisition function
         """
-        if self.acquisition_type == 'ei':
+        if self.acquisition_type == "ei":
             acqf = ExpectedImprovement(
                 reg_model, f_best_scaled, objective=None, maximize=False
             )
 
-        elif self.acquisition_type == 'ucb':
+        elif self.acquisition_type == "ucb":
             acqf = UpperConfidenceBound(
-                reg_model, beta=torch.tensor([0.2]).repeat(self.batch_size), objective=None, maximize=False
+                reg_model,
+                beta=torch.tensor([0.2]).repeat(self.batch_size),
+                objective=None,
+                maximize=False,
             )
-        elif self.acquisition_type == 'variance':
+        elif self.acquisition_type == "variance":
             acqf = VarianceBased(reg_model)
 
-        elif self.acquisition_type == 'general':
+        elif self.acquisition_type == "general":
             # do not scale the acqf in this case
             # TODO is this OK?
-            return 0., 1.
+            return 0.0, 1.0
 
         samples, _ = propose_randomly(
-            num_samples, self.param_space, self.has_descriptors,
+            num_samples,
+            self.param_space,
+            self.has_descriptors,
         )
 
         if (
@@ -441,7 +443,9 @@ class BoTorchPlanner(BasePlanner):
             pass
         else:
             # scale the parameters
-            samples = forward_normalize(samples, self.params_obj._mins_x, self.params_obj._maxs_x)
+            samples = forward_normalize(
+                samples, self.params_obj._mins_x, self.params_obj._maxs_x
+            )
 
         acqf_vals = acqf(
             torch.tensor(samples)

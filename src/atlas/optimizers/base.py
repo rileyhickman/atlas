@@ -30,10 +30,9 @@ from botorch.optim import (
     optimize_acqf_discrete,
     optimize_acqf_mixed,
 )
-from gpytorch.mlls import ExactMarginalLogLikelihood
-
+from golem import *
 from golem import Golem
-
+from gpytorch.mlls import ExactMarginalLogLikelihood
 from olympus import ParameterVector
 from olympus.campaigns import ParameterSpace
 from olympus.planners import AbstractPlanner, CustomPlanner, Planner
@@ -48,7 +47,6 @@ from atlas.optimizers.acqfs import (
     create_available_options,
     get_batch_initial_conditions,
 )
-from atlas.optimizers.params import Parameters
 from atlas.optimizers.acquisition_optimizers.base_optimizer import (
     AcquisitionOptimizer,
 )
@@ -56,6 +54,7 @@ from atlas.optimizers.gps import (
     CategoricalSingleTaskGP,
     ClassificationGPMatern,
 )
+from atlas.optimizers.params import Parameters
 from atlas.optimizers.utils import (
     cat_param_to_feat,
     forward_normalize,
@@ -67,10 +66,7 @@ from atlas.optimizers.utils import (
     reverse_normalize,
     reverse_standardize,
 )
-
 from atlas.utils.golem_utils import get_golem_dists
-
-
 
 
 class BasePlanner(CustomPlanner):
@@ -84,7 +80,7 @@ class BasePlanner(CustomPlanner):
         use_descriptors: bool = False,
         num_init_design: int = 5,
         init_design_strategy: str = "random",
-        acquisition_type: str = 'ei',  # ei, ucb
+        acquisition_type: str = "ei",  # ei, ucb
         acquisition_optimizer_kind: str = "gradient",  # gradient, genetic
         vgp_iters: int = 2000,
         vgp_lr: float = 0.1,
@@ -100,6 +96,14 @@ class BasePlanner(CustomPlanner):
         golem_config: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ):
+        """Base optimizer class containing higher-level operations.
+
+        The golem_config argument is a dictionary with the following keys
+            distributions -
+
+        Args:
+
+        """
         AbstractPlanner.__init__(**locals())
         self.goal = goal
         self.feas_strategy = feas_strategy
@@ -131,11 +135,11 @@ class BasePlanner(CustomPlanner):
         # check multiobjective stuff
         if self.is_moo:
             if self.goals is None:
-                message = f"You must individual goals for multiobjective optimization"
+                message = f"You must provide individual goals for multi-objective optimization"
                 Logger.log(message, "FATAL")
 
             if self.goal == "maximize":
-                message = "Overall goal must be set to minimization for multiobjective optimization. Updating ..."
+                message = "Overall goal must be set to minimization for multi-objective optimization. Updating ..."
                 Logger.log(message, "WARNING")
                 self.goal = "minimize"
 
@@ -164,8 +168,6 @@ class BasePlanner(CustomPlanner):
             Logger.log(message, "FATAL")
 
         self.num_init_design_completed = 0
-
-
 
     def _set_param_space(self, param_space: ParameterSpace):
         """set the Olympus parameter space (not actually really needed)"""
@@ -207,22 +209,32 @@ class BasePlanner(CustomPlanner):
 
         # check general parameter types, if we have some
         if self.general_parameters is not None:
-            if not all([self.param_space[ix].type in ['discrete', 'categorical'] for ix in self.general_parameters]):
-                msg = 'Only discrete- and categorical-type general parameters are currently supported'
-                Logger.log(msg, 'FATAL')
+            if not all(
+                [
+                    self.param_space[ix].type in ["discrete", "categorical"]
+                    for ix in self.general_parameters
+                ]
+            ):
+                msg = "Only discrete- and categorical-type general parameters are currently supported"
+                Logger.log(msg, "FATAL")
 
         # initialize golem
         if self.golem_config is not None:
-            self.golem_dists = get_golem_dists(self.golem_config, self.param_space)
+            self.golem_dists = get_golem_dists(
+                self.golem_config, self.param_space
+            )
             if not self.golem_dists == None:
-                self.golem = Golem(forest_type='dt', ntrees=50, goal='min', verbose=True,) # always minimization goal
+                self.golem = Golem(
+                    forest_type="dt",
+                    ntrees=50,
+                    goal="min",
+                    verbose=True,
+                )  # always minimization goal
             else:
                 self.golem = None
         else:
             self.golem_dists = None
             self.golem = None
-
-
 
     def build_train_classification_gp(
         self, train_x: torch.Tensor, train_y: torch.Tensor
@@ -397,7 +409,6 @@ class BasePlanner(CustomPlanner):
             params_reg = self._params[feas_ix].reshape(-1, 1)
             train_y_reg = self._values[feas_ix].reshape(-1, 1)
 
-
         train_x_cla, train_x_reg = [], []
 
         # adapt the data from olympus form to torch tensors
@@ -426,9 +437,9 @@ class BasePlanner(CustomPlanner):
         if self.golem is not None:
             self.golem.fit(X=train_x_reg, y=train_y_reg.flatten())
             train_y_reg = self.golem.predict(
-                X=train_x_reg, distributions=self.golem_dists,
+                X=train_x_reg,
+                distributions=self.golem_dists,
             ).reshape(-1, 1)
-
 
         # scale the training data - normalize inputs and standardize outputs
         self._means_y, self._stds_y = np.mean(train_y_reg, axis=0), np.std(
@@ -509,7 +520,9 @@ class BasePlanner(CustomPlanner):
             pass
         else:
             # scale the parameters
-            X_proc = forward_normalize(X_proc, self.params_obj._mins_x, self.params_obj._maxs_x)
+            X_proc = forward_normalize(
+                X_proc, self.params_obj._mins_x, self.params_obj._maxs_x
+            )
 
         posterior = self.reg_model.posterior(X=X_proc)
         pred_mu, pred_sigma = posterior.mean.detach(), torch.sqrt(
@@ -569,7 +582,9 @@ class BasePlanner(CustomPlanner):
             pass
         else:
             # scale the parameters
-            X_proc = forward_normalize(X_proc, self.params_obj._mins_x, self.params_obj._maxs_x)
+            X_proc = forward_normalize(
+                X_proc, self.params_obj._mins_x, self.params_obj._maxs_x
+            )
 
         likelihood = self.cla_likelihood(self.cla_model(X_proc.float()))
         mean = likelihood.mean.detach()
@@ -621,7 +636,9 @@ class BasePlanner(CustomPlanner):
             pass
         else:
             # scale the parameters
-            X_proc = forward_normalize(X_proc, self.params_obj._mins_x, self.params_obj._maxs_x)
+            X_proc = forward_normalize(
+                X_proc, self.params_obj._mins_x, self.params_obj._maxs_x
+            )
 
         X_proc = X_proc.view(X_proc.shape[0], 1, X_proc.shape[-1])
         if unconstrained:

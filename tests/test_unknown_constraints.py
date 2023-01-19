@@ -22,10 +22,13 @@ CONT = {
     ],  # init design strategues
     "batch_size": [1, 2],  # batch size
     "feas_strategy_param": [
-        'naive-0_0', 'fia_1000',
-        'fwa_0',
-        'fca_0.2', 'fca_0.8',
-        'fia_0.5', 'fia_2.0',
+        "naive-0_0",
+        "fia_1000",
+        "fwa_0",
+        "fca_0.2",
+        "fca_0.8",
+        "fia_0.5",
+        "fia_2.0",
     ],
     "use_descriptors": [False],  # use descriptors
 }
@@ -36,10 +39,13 @@ CAT = {
     ],  # init design strategues
     "batch_size": [1, 2],  # batch size
     "feas_strategy_param": [
-        'naive-0_0', 'fia_1000',
-        'fwa_0',
-        'fca_0.2', 'fca_0.8',
-        'fia_0.5', 'fia_2.0',
+        "naive-0_0",
+        "fia_1000",
+        "fwa_0",
+        "fca_0.2",
+        "fca_0.8",
+        "fia_0.5",
+        "fia_2.0",
     ],
     "use_descriptors": [False, True],  # use descriptors
 }
@@ -49,32 +55,44 @@ CAT = {
 @pytest.mark.parametrize("batch_size", CONT["batch_size"])
 @pytest.mark.parametrize("feas_strategy_param", CONT["feas_strategy_param"])
 @pytest.mark.parametrize("use_descriptors", CONT["use_descriptors"])
-def test_unknown_cont(init_design_strategy, batch_size, feas_strategy_param, use_descriptors):
-    run_continuous(init_design_strategy, batch_size, feas_strategy_param, use_descriptors)
+def test_unknown_cont(
+    init_design_strategy, batch_size, feas_strategy_param, use_descriptors
+):
+    run_continuous(
+        init_design_strategy, batch_size, feas_strategy_param, use_descriptors
+    )
 
 
 @pytest.mark.parametrize("init_design_strategy", CAT["init_design_strategy"])
 @pytest.mark.parametrize("batch_size", CAT["batch_size"])
 @pytest.mark.parametrize("feas_strategy_param", CAT["feas_strategy_param"])
 @pytest.mark.parametrize("use_descriptors", CAT["use_descriptors"])
-def test_unknown_cat(init_design_strategy, batch_size, feas_strategy_param, use_descriptors):
-    run_categorical(init_design_strategy, batch_size, feas_strategy_param, use_descriptors)
-
+def test_unknown_cat(
+    init_design_strategy, batch_size, feas_strategy_param, use_descriptors
+):
+    run_categorical(
+        init_design_strategy, batch_size, feas_strategy_param, use_descriptors
+    )
 
 
 def run_continuous(
-    init_design_strategy, batch_size, feas_strategy_param, use_descriptors, num_init_design=5
+    init_design_strategy,
+    batch_size,
+    feas_strategy_param,
+    use_descriptors,
+    num_init_design=5,
 ):
     def surface(x):
-        if np.random.uniform()>0.2:
-            return np.sin(8 * x[0]) - 2 * np.cos(6 * x[1]) + np.exp(-2.0 * x[2])
+        if np.random.uniform() > 0.2:
+            return (
+                np.sin(8 * x[0]) - 2 * np.cos(6 * x[1]) + np.exp(-2.0 * x[2])
+            )
         else:
             return np.nan
 
-    split = feas_strategy_param.split('_')
+    split = feas_strategy_param.split("_")
     print(split)
     feas_strategy, feas_param = split[0], float(split[1])
-
 
     param_space = ParameterSpace()
     param_0 = ParameterContinuous(name="param_0", low=0.0, high=1.0)
@@ -112,17 +130,19 @@ def run_continuous(
     assert len(campaign.observations.get_values()) == BUDGET
 
 
-
 def run_categorical(
-    init_design_strategy, batch_size, feas_strategy_param, use_descriptors, num_init_design=5
+    init_design_strategy,
+    batch_size,
+    feas_strategy_param,
+    use_descriptors,
+    num_init_design=5,
 ):
 
     surface_kind = "CatDejong"
     surface = Surface(kind=surface_kind, param_dim=2, num_opts=21)
 
-    split = feas_strategy_param.split('_')
+    split = feas_strategy_param.split("_")
     feas_strategy, feas_param = split[0], float(split[1])
-
 
     campaign = Campaign()
     campaign.set_param_space(surface.param_space)
@@ -145,7 +165,7 @@ def run_categorical(
         samples = planner.recommend(campaign.observations)
         for sample in samples:
             sample_arr = sample.to_array()
-            if np.random.uniform()>0.2:
+            if np.random.uniform() > 0.2:
                 measurement = surface.run(sample_arr)[0][0]
             else:
                 measurement = np.nan
@@ -155,8 +175,9 @@ def run_categorical(
     assert len(campaign.observations.get_params()) == BUDGET
     assert len(campaign.observations.get_values()) == BUDGET
 
-if __name__ == '__main__':
 
-    #run_continuous('random', 1, 'fwa-0', False)
-    #run_continuous('random', 1, 'naive-0_0', False)
+if __name__ == "__main__":
+
+    # run_continuous('random', 1, 'fwa-0', False)
+    # run_continuous('random', 1, 'naive-0_0', False)
     pass

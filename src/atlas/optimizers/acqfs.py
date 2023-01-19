@@ -7,7 +7,11 @@ import gpytorch
 import numpy as np
 import pandas as pd
 import torch
-from botorch.acquisition import AcquisitionFunction, ExpectedImprovement, UpperConfidenceBound
+from botorch.acquisition import (
+    AcquisitionFunction,
+    ExpectedImprovement,
+    UpperConfidenceBound,
+)
 from botorch.acquisition.monte_carlo import (
     qExpectedImprovement,
     qNoisyExpectedImprovement,
@@ -20,8 +24,8 @@ from atlas.optimizers.utils import (
     propose_randomly,
 )
 
-class FeasibilityAwareAcquisition:
 
+class FeasibilityAwareAcquisition:
     def compute_feas_post(self, X):
         """computes the posterior P(infeasible|X)
         Args:
@@ -53,8 +57,8 @@ class FeasibilityAwareAcquisition:
 
 
 class VarianceBased(AcquisitionFunction):
-    """ Variance-based sampling (active learning)
-    """
+    """Variance-based sampling (active learning)"""
+
     def __init__(self, reg_model, **kwargs):
         super().__init__(reg_model, **kwargs)
         self.reg_model = reg_model
@@ -62,14 +66,17 @@ class VarianceBased(AcquisitionFunction):
     def forward(self, X):
         posterior = self.reg_model.posterior(X.double())
         sigma = posterior.variance.clamp_min(1e-9).sqrt()
-        view_shape = sigma.shape[:-2] if sigma.shape[-2] == 1 else sigma.shape[:-1]
+        view_shape = (
+            sigma.shape[:-2] if sigma.shape[-2] == 1 else sigma.shape[:-1]
+        )
 
         return sigma.view(view_shape)
 
 
-class FeasibilityAwareVarainceBased(VarianceBased, FeasibilityAwareAcquisition):
-    """ Feasibility aware variance-based sampling (active learning)
-    """
+class FeasibilityAwareVarainceBased(
+    VarianceBased, FeasibilityAwareAcquisition
+):
+    """Feasibility aware variance-based sampling (active learning)"""
 
     def __init__(
         self,
@@ -100,11 +107,11 @@ class FeasibilityAwareVarainceBased(VarianceBased, FeasibilityAwareAcquisition):
         self.use_p_feas_only = use_p_feas_only
         self.maximize = maximize
 
-
     def forward(self, X):
         acqf = super().forward(X)
         acqf = (acqf - self.acqf_min_max[0]) / (
-            self.acqf_min_max[1] - self.acqf_min_max[0] # normalize sigma value
+            self.acqf_min_max[1]
+            - self.acqf_min_max[0]  # normalize sigma value
         )
 
         if not "naive-" in self.feas_strategy:
@@ -115,9 +122,10 @@ class FeasibilityAwareVarainceBased(VarianceBased, FeasibilityAwareAcquisition):
         return self.compute_combined_acqf(acqf, p_feas)
 
 
-class FeasibilityAwareGeneral(AcquisitionFunction, FeasibilityAwareAcquisition):
-    """Abstract feasibilty aware general purpose optimization acquisition function.
-    """
+class FeasibilityAwareGeneral(
+    AcquisitionFunction, FeasibilityAwareAcquisition
+):
+    """Abstract feasibilty aware general purpose optimization acquisition function."""
 
     def __init__(
         self,
@@ -154,16 +162,15 @@ class FeasibilityAwareGeneral(AcquisitionFunction, FeasibilityAwareAcquisition):
         self.X_sns_empty, _ = self.generate_X_sns()
         self.functional_dims = np.logical_not(self.params_obj.exp_general_mask)
 
-
     def forward(self, X):
         X = X.double()
         best_f = self.best_f.to(X)
 
-        X_sns = torch.empty( (X.shape[0],)+self.X_sns_empty.shape ).double()
+        X_sns = torch.empty((X.shape[0],) + self.X_sns_empty.shape).double()
         for x_ix in range(X.shape[0]):
-            X_sn  = torch.clone(self.X_sns_empty)
+            X_sn = torch.clone(self.X_sns_empty)
             X_sn[:, :, self.functional_dims] = X[x_ix, :, self.functional_dims]
-            X_sns[x_ix,:,:,:] = X_sn
+            X_sns[x_ix, :, :, :] = X_sn
 
         pred_mu_x, pred_sigma_x = [], []
 
@@ -194,7 +201,6 @@ class FeasibilityAwareGeneral(AcquisitionFunction, FeasibilityAwareAcquisition):
 
         return ei
 
-
     def generate_X_sns(self):
         # generate Cartesian product space of the general parameter options
         param_options = []
@@ -204,16 +210,20 @@ class FeasibilityAwareGeneral(AcquisitionFunction, FeasibilityAwareAcquisition):
         cart_product = list(itertools.product(*param_options))
         cart_product = [list(elem) for elem in cart_product]
 
-        X_sns_empty = torch.empty(size=(len(cart_product), self.params_obj.expanded_dims)).double()
+        X_sns_empty = torch.empty(
+            size=(len(cart_product), self.params_obj.expanded_dims)
+        ).double()
         general_expanded = []
-        general_raw  = []
+        general_raw = []
         for elem in cart_product:
             # convert to ohe and add to currently available options
-            ohe,raw = [],[]
+            ohe, raw = [], []
             for val, obj in zip(elem, self.param_space):
                 if obj.type == "categorical":
                     ohe.append(
-                        cat_param_to_feat(obj, val, self.params_obj.has_descriptors)
+                        cat_param_to_feat(
+                            obj, val, self.params_obj.has_descriptors
+                        )
                     )
                     raw.append(val)
                 else:
@@ -226,10 +236,12 @@ class FeasibilityAwareGeneral(AcquisitionFunction, FeasibilityAwareAcquisition):
         X_sns_empty[:, self.params_obj.exp_general_mask] = general_expanded
         # forward normalize
         X_sns_empty = forward_normalize(
-            X_sns_empty, self.params_obj._mins_x, self.params_obj._maxs_x,
+            X_sns_empty,
+            self.params_obj._mins_x,
+            self.params_obj._maxs_x,
         )
         # TODO: careful of the batch size, will need to change this
-        X_sns_empty = torch.unsqueeze(X_sns_empty,1)
+        X_sns_empty = torch.unsqueeze(X_sns_empty, 1)
 
         return X_sns_empty, general_raw
 
@@ -363,7 +375,6 @@ class FeasibilityAwareEI(ExpectedImprovement, FeasibilityAwareAcquisition):
 
 
 class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
-
     def __init__(
         self,
         reg_model,
@@ -451,7 +462,6 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
     #         raise NotImplementedError
 
 
-
 def get_batch_initial_conditions(
     num_restarts,
     batch_size,
@@ -462,7 +472,7 @@ def get_batch_initial_conditions(
     has_descriptors,
     num_chances=15,
     return_raw=False,
-    ):
+):
     """generate batches of initial conditions for a
     random restart optimization subject to some constraints. This uses
     rejection sampling, and might get very inefficient for parameter spaces with
@@ -501,7 +511,9 @@ def get_batch_initial_conditions(
         for constraint in constraint_callable:
             constraint_val = constraint(raw_samples)
             if len(constraint_val.shape) == 1:
-                constraint_val = constraint_val.view(constraint_val.shape[0], 1)
+                constraint_val = constraint_val.view(
+                    constraint_val.shape[0], 1
+                )
             constraint_vals.append(constraint_val)
 
         if len(constraint_vals) == 2:
@@ -517,8 +529,8 @@ def get_batch_initial_conditions(
     if batch_initial_conditions.shape[0] >= num_restarts:
         if return_raw:
             return (
-                batch_initial_conditions[:num_restarts,:,:],
-                batch_initial_conditions_raw[:num_restarts,:]
+                batch_initial_conditions[:num_restarts, :, :],
+                batch_initial_conditions_raw[:num_restarts, :],
             )
         return batch_initial_conditions[:num_restarts, :, :]
     elif 0 < batch_initial_conditions.shape[0] < num_restarts:
@@ -546,7 +558,6 @@ def get_batch_initial_conditions(
     if return_raw:
         return batch_initial_conditions, batch_initial_conditions_raw
     return batch_initial_conditions
-
 
 
 def sample_around_x(raw_samples, constraint_callable):
