@@ -2,10 +2,16 @@
 
 import os
 import pickle
+import math
 import sys
 import time
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+
+# TODO: delete
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 import gpytorch
 import numpy as np
@@ -233,12 +239,15 @@ class BasePlanner(CustomPlanner):
 
         return model, likelihood
 
+
+
     def train_vgp(
         self,
         model: gpytorch.models.ApproximateGP,
         likelihood: gpytorch.likelihoods.BernoulliLikelihood,
         train_x: torch.Tensor,
         train_y: torch.Tensor,
+        cross_validate: str = True,
     ) -> Tuple[
         gpytorch.models.ApproximateGP, gpytorch.likelihoods.BernoulliLikelihood
     ]:
@@ -249,23 +258,111 @@ class BasePlanner(CustomPlanner):
 
         mll = gpytorch.mlls.VariationalELBO(likelihood, model, train_y.numel())
 
-        # TODO: might be better to break into batches here...
-        # NOTE: we could also do some sort of cross-validation here for early stopping
-        start_time = time.time()
-        with gpytorch.settings.cholesky_jitter(self.max_jitter):
-            for iter_ in track(
-                range(self.vgp_iters), description="Training variational GP..."
-            ):
-                optimizer.zero_grad()
-                output = model(train_x)
-                loss = -mll(output, train_y)
-                loss.backward()
-                optimizer.step()
-        vgp_train_time = time.time() - start_time
-        msg = f" Classification surrogate VGP trained in {round(vgp_train_time,3)} sec ({self.vgp_iters} epochs)\t Loss : {round(loss.item(), 3)} "
-        Logger.log(msg, "INFO")
+        # cross-validation parameters
+        num_folds = 3
+        min_obs = 10
+        es_patience = 200
+        count_after_iter = 50
+
+        if cross_validate and train_y.shape[0] >= min_obs:
+
+            folds = []
+
+            fold_size = math.ceil(train_y.shape[0]/num_folds)
+            indices = torch.arange(train_y.shape[0])
+
+            # cross validation procedure
+            for fold_ix in range(num_folds):
+
+                # create fold data
+                train_x_fold, train_y_fold = train_x[indices[fold_size:], :], train_y[indices[fold_size:]]
+                valid_x_fold, valid_y_fold = train_x[indices[:fold_size], :], train_y[indices[:fold_size]]
+
+                # create new model and likelihood for fold
+                model_fold = ClassificationGPMatern(train_x_fold, train_y_fold)
+                likelihood_fold = gpytorch.likelihoods.BernoulliLikelihood()
+                optimizer_fold = torch.optim.Adam(model_fold.parameters(), lr=self.vgp_lr)
+                mll_fold = gpytorch.mlls.VariationalELBO(likelihood_fold, model_fold, train_y_fold.numel())
+
+                model_fold.train()
+                likelihood_fold.train()
+
+                folds.append({
+                    'model': model_fold, 'likelihood': likelihood_fold,
+                    'optimizer': optimizer_fold, 'mll': mll_fold,
+                    'train_x': train_x_fold, 'train_y': train_y_fold,
+                    'valid_x': valid_x_fold, 'valid_y': valid_y_fold,
+                })
+
+                indices = torch.roll(indices, fold_size)
+
+            num_epochs_fold = []
+
+            # train model on folds with early stopping
+            for fold_ix, fold in enumerate(folds):
+                train_losses, valid_losses = [], []
+                start_time = time.time()
+                model_fold, likelihood_fold = fold['model'], fold['likelihood']
+                optimizer_fold, mll_fold = fold['optimizer'], fold['mll']
+                with gpytorch.settings.cholesky_jitter(self.max_jitter):
+
+                    best_loss = 1.e8
+                    patience_iter_ = 0
+                    for iter_ in track(
+                        range(self.vgp_iters), description=f'Training variational GP on fold {fold_ix+1}/{num_folds}'
+                    ):
+                        optimizer_fold.zero_grad()
+                        train_pred = model_fold(fold['train_x'])
+                        valid_pred = model_fold(fold['valid_x'])
+                        train_loss = -mll_fold(train_pred, fold['train_y'])
+                        valid_loss = -mll_fold(valid_pred, fold['valid_y'])
+
+                        if iter_ > count_after_iter:
+                            if valid_loss < best_loss:
+                                best_loss = valid_loss
+                                patience_iter_ = 0  # reset patience
+                            else:
+                                patience_iter_ += 1 # increment patience
+
+                            if patience_iter_ > es_patience:
+                                break  # early stopping criteria met
+
+                        train_losses.append(train_loss)
+                        valid_losses.append(valid_loss)
+
+                        train_loss.backward()
+                        optimizer_fold.step()
+
+                # TODO: this is temporary
+                fig, ax = plt.subplots()
+                ax.plot(np.arange(iter_)+1, torch.tensor(train_losses).detach().numpy(), label='training')
+                ax.plot(np.arange(iter_)+1, torch.tensor(valid_losses).detach().numpy(), label='validation')
+                ax.legend()
+                plt.savefig(f'fold_{fold_ix}_losses.png',dpi=200)
+
+                vgp_train_time = time.time() - start_time
+                msg = f" Classification surrogate VGP trained in {round(vgp_train_time,3)} sec ({iter_} epochs)\t Loss : {round(train_loss.item(), 3)} "
+                Logger.log(msg, "INFO")
+                # TODO: update this
+                num_epochs_fold.append(iter_)
+
+            # train model on all observations
+            num_iters_full = int(np.mean(num_epochs_fold))
+            with gpytorch.settings.cholesky_jitter(self.max_jitter):
+                for iter_ in track(
+                    range(num_iters_full), description=f"Training variational GP on all observations ..."
+                ):
+                    optimizer.zero_grad()
+                    output = model(train_x)
+                    loss = -mll(output, train_y)
+                    loss.backward()
+                    optimizer.step()
+            vgp_train_time = time.time() - start_time
+            msg = f" Classification surrogate VGP trained in {round(vgp_train_time,3)} sec ({num_iters_full} epochs)\t Loss : {round(loss.item(), 3)} "
+            Logger.log(msg, "INFO")
 
         return model, likelihood
+
 
     def build_train_data(self) -> Tuple[torch.Tensor, torch.tensor]:
         """build the training dataset at each iteration"""
