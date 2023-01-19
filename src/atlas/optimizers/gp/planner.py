@@ -34,6 +34,7 @@ from olympus.scalarizers import Scalarizer
 from atlas import Logger
 from atlas.optimizers.acqfs import (
     FeasibilityAwareEI,
+    FeasibilityAwareUCB,
     FeasibilityAwareGeneral,
     FeasibilityAwareQEI,
     FeasibilityAwareVarainceBased,

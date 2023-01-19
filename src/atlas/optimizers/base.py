@@ -8,11 +8,6 @@ import time
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-
-# TODO: delete
-import matplotlib.pyplot as plt
-import seaborn as sns
-
 import gpytorch
 import numpy as np
 import olympus
@@ -345,12 +340,6 @@ class BasePlanner(CustomPlanner):
                         train_loss.backward()
                         optimizer_fold.step()
 
-                # TODO: this is temporary
-                fig, ax = plt.subplots()
-                ax.plot(np.arange(iter_)+1, torch.tensor(train_losses).detach().numpy(), label='training')
-                ax.plot(np.arange(iter_)+1, torch.tensor(valid_losses).detach().numpy(), label='validation')
-                ax.legend()
-                plt.savefig(f'fold_{fold_ix}_losses.png',dpi=200)
 
                 vgp_train_time = time.time() - start_time
                 msg = f" Classification surrogate VGP trained in {round(vgp_train_time,3)} sec ({iter_} epochs)\t Loss : {round(train_loss.item(), 3)} "
