@@ -35,6 +35,7 @@ from atlas import Logger
 from atlas.optimizers.acqfs import (
     FeasibilityAwareEI,
     FeasibilityAwareUCB,
+    FeasibilityAwareUCBV2,
     FeasibilityAwareGeneral,
     FeasibilityAwareQEI,
     FeasibilityAwareVarainceBased,
@@ -352,6 +353,21 @@ class BoTorchPlanner(BasePlanner):
                     self.feas_param,
                     infeas_ratio,
                     acqf_min_max,
+                    #beta=torch.tensor([0.2]).repeat(self.batch_size),
+                    beta=torch.tensor([0.2]).repeat(self.batch_size),
+                )
+            elif self.acquisition_type == "ucbv2":
+                self.acqf = FeasibilityAwareUCBV2(
+                    self.reg_model,
+                    self.cla_model,
+                    self.cla_likelihood,
+                    self.param_space,
+                    f_best_scaled,
+                    self.feas_strategy,
+                    self.feas_param,
+                    infeas_ratio,
+                    acqf_min_max,
+                    #beta=torch.tensor([0.2]).repeat(self.batch_size),
                     beta=torch.tensor([0.2]).repeat(self.batch_size),
                 )
             elif self.acquisition_type == "variance":
@@ -404,7 +420,7 @@ class BoTorchPlanner(BasePlanner):
         self,
         reg_model: gpytorch.models.ExactGP,
         f_best_scaled: torch.Tensor,
-        num_samples: int = 2000,
+        num_samples: int = 3000,
     ) -> Tuple[int, int]:
         """computes the min and max value of the acquisition function without
         the feasibility contribution. These values will be used to approximately
@@ -418,10 +434,21 @@ class BoTorchPlanner(BasePlanner):
         elif self.acquisition_type == "ucb":
             acqf = UpperConfidenceBound(
                 reg_model,
-                beta=torch.tensor([0.2]).repeat(self.batch_size),
+                #beta=torch.tensor([0.2]).repeat(self.batch_size),
+                beta=torch.tensor([1.0]).repeat(self.batch_size),
                 objective=None,
                 maximize=False,
             )
+        elif self.acquisition_type == 'ucbv2':
+
+            def acqf(X):
+                posterior = self.reg_model.posterior(
+                    X=X,
+                )
+                mean = posterior.mean.squeeze(-2).squeeze(-1)  # removing redundant dimensions
+                sigma = posterior.variance.clamp_min(1e-12).sqrt().view(mean.shape)
+                return -mean, sigma
+
         elif self.acquisition_type == "variance":
             acqf = VarianceBased(reg_model)
 
@@ -453,11 +480,28 @@ class BoTorchPlanner(BasePlanner):
             .view(samples.shape[0], 1, samples.shape[-1])
             .double()
         )
-        min_ = torch.amin(acqf_vals).item()
-        max_ = torch.amax(acqf_vals).item()
+        if not self.acquisition_type == 'ucbv2':
+            min_ = torch.amin(acqf_vals).item()
+            max_ = torch.amax(acqf_vals).item()
 
-        if np.abs(max_ - min_) < 1e-6:
-            max_ = 1.0
-            min_ = 0.0
+            if np.abs(max_ - min_) < 1e-6:
+                max_ = 1.0
+                min_ = 0.0
 
-        return min_, max_
+            return min_, max_
+        else:
+            min_mean_ = torch.amin(acqf_vals[0]).item()
+            max_mean_ = torch.amax(acqf_vals[0]).item()
+
+            min_sigma_ = torch.amin(acqf_vals[1]).item()
+            max_sigma_ = torch.amax(acqf_vals[1]).item()
+
+            if np.abs(max_mean_ - min_mean_) < 1e-6:
+                max_mean_ = 1.0
+                min_mean_ = 0.0
+
+            if np.abs(max_sigma_ - min_sigma_) < 1e-6:
+                max_sigma_ = 1.0
+                min_sigma_ = 0.0
+
+            return (min_mean_, max_mean_), (min_sigma_, max_sigma_)

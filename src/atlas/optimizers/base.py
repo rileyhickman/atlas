@@ -268,7 +268,7 @@ class BasePlanner(CustomPlanner):
         # cross-validation parameters
         num_folds = 3
         min_obs = 10
-        es_patience = 200
+        es_patience = 300
         count_after_iter = 50
 
         if cross_validate and train_y.shape[0] >= min_obs:
