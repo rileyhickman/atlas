@@ -514,12 +514,11 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 		# maximized by default
 		if not "naive-" in self.feas_strategy:
 			p_feas = 1.0 - self.compute_feas_post(X)
+			if not self.feas_strategy == 'fca':
+				# cutoff at 0.5 (only penalize acqf if classifier believes its infeasible)
+				p_feas = torch.minimum(p_feas, torch.ones_like(p_feas)*0.5)
 		else:
 			p_feas = 1.0
-
-		if not self.feas_strategy == 'fca':
-			# cutoff at 0.5 (only penalize acqf if classifier believes its infeasible)
-			p_feas = torch.minimum(p_feas, torch.ones_like(p_feas)*0.5)
 
 		return self.compute_combined_acqf(acqf, p_feas)
 
