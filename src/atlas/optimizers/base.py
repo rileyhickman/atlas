@@ -271,19 +271,37 @@ class BasePlanner(CustomPlanner):
         es_patience = 300
         count_after_iter = 50
 
+
         if cross_validate and train_y.shape[0] >= min_obs:
+
+            idx_0 = torch.where(train_y==0.)[0]
+            idx_1 = torch.where(train_y==1.)[0]
+            num_0, num_1 = len(idx_0), len(idx_1)
+
+            if num_0 >= num_1:
+                num_tiles = num_0//num_1
+                y_infl = torch.tile(train_y[idx_1], dims=(num_tiles,))
+                X_infl = torch.tile(train_x[idx_1], dims=(num_tiles,1))
+            else:
+                num_tiles = num_1//num_0
+                y_infl = torch.tile(train_y[idx_0], dims=(num_tiles,))
+                X_infl = torch.tile(train_x[idx_0], dims=(num_tiles,1))
+
+            train_y_infl = torch.cat([train_y, y_infl])
+            train_x_infl = torch.cat([train_x, X_infl])
+
 
             folds = []
 
-            fold_size = math.ceil(train_y.shape[0]/num_folds)
-            indices = torch.arange(train_y.shape[0])
+            fold_size = math.ceil(train_y_infl.shape[0]/num_folds)
+            indices = torch.randperm(train_y_infl.shape[0])#torch.arange(train_y_infl.shape[0])
 
             # cross validation procedure
             for fold_ix in range(num_folds):
 
                 # create fold data
-                train_x_fold, train_y_fold = train_x[indices[fold_size:], :], train_y[indices[fold_size:]]
-                valid_x_fold, valid_y_fold = train_x[indices[:fold_size], :], train_y[indices[:fold_size]]
+                train_x_fold, train_y_fold = train_x_infl[indices[fold_size:], :], train_y_infl[indices[fold_size:]]
+                valid_x_fold, valid_y_fold = train_x_infl[indices[:fold_size], :], train_y_infl[indices[:fold_size]]
 
                 # create new model and likelihood for fold
                 model_fold = ClassificationGPMatern(train_x_fold, train_y_fold)

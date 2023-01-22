@@ -158,7 +158,7 @@ class GradientOptimizer:
             bounds=self.bounds,
             num_restarts=20,
             q=self.batch_size,
-            #raw_samples=1000,
+            raw_samples=1000,
             nonlinear_inequality_constraints=nonlinear_inequality_constraints,
             batch_initial_conditions=batch_initial_conditions,
         )
