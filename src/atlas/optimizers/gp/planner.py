@@ -284,7 +284,7 @@ class BoTorchPlanner(BasePlanner):
                 self.train_x_scaled_reg, self.train_y_scaled_reg
             )
 
-            if not "naive-" in self.feas_strategy:
+            if not "naive-" in self.feas_strategy and torch.sum(self.train_y_scaled_cla).item() != 0.:
                 # build and train the classification surrogate model
                 (
                     self.cla_model,
@@ -296,8 +296,18 @@ class BoTorchPlanner(BasePlanner):
                 self.cla_model.eval()
                 self.cla_likelihood.eval()
 
+                use_reg_only = False
+                
+                # estimate the max and min of the cla surrogate
+                self.cla_surr_min_, self.cla_surr_max_ = self.get_cla_surr_min_max(num_samples=5000)
+                self.fca_cutoff = (self.cla_surr_max_-self.cla_surr_min_)*self.feas_param + self.cla_surr_min_
+
+
             else:
+                use_reg_only = True
                 self.cla_model, self.cla_likelihood = None, None
+                self.cla_surr_min_, self.cla_surr_max_ = None, None
+
 
             # get the incumbent point
             f_best_argmin = torch.argmin(self.train_y_scaled_reg)
@@ -342,6 +352,7 @@ class BoTorchPlanner(BasePlanner):
                         acqf_min_max,
                     )
 
+
             elif self.acquisition_type == "ucb":
                 self.acqf = FeasibilityAwareUCB(
                     self.reg_model,
@@ -353,8 +364,9 @@ class BoTorchPlanner(BasePlanner):
                     self.feas_param,
                     infeas_ratio,
                     acqf_min_max,
+                    use_reg_only=use_reg_only,
                     #beta=torch.tensor([0.2]).repeat(self.batch_size),
-                    beta=torch.tensor([0.2]).repeat(self.batch_size),
+                    beta=torch.tensor([1.]).repeat(self.batch_size),
                 )
             elif self.acquisition_type == "ucbv2":
                 self.acqf = FeasibilityAwareUCBV2(
@@ -370,6 +382,7 @@ class BoTorchPlanner(BasePlanner):
                     #beta=torch.tensor([0.2]).repeat(self.batch_size),
                     beta=torch.tensor([0.2]).repeat(self.batch_size),
                 )
+
             elif self.acquisition_type == "variance":
                 self.acqf = FeasibilityAwareVarainceBased(
                     self.reg_model,
@@ -382,6 +395,7 @@ class BoTorchPlanner(BasePlanner):
                     infeas_ratio,
                     acqf_min_max,
                 )
+
             elif self.acquisition_type == "general":
                 self.acqf = FeasibilityAwareGeneral(
                     self.reg_model,
@@ -396,6 +410,7 @@ class BoTorchPlanner(BasePlanner):
                     infeas_ratio,
                     acqf_min_max,
                 )
+
             else:
                 msg = f"Acquisition function type {self.acquisition_type} not understood!"
                 Logger.log(msg, "FATAL")
@@ -416,6 +431,39 @@ class BoTorchPlanner(BasePlanner):
 
         return return_params
 
+
+    def get_cla_surr_min_max(self, num_samples:int=5000) -> Tuple[int, int]:
+        """ estimate the max and min of the classification surrogate
+        """
+
+        samples, _ = propose_randomly(
+            num_samples,
+            self.param_space,
+            self.has_descriptors,
+        )
+        if (
+            self.problem_type == "fully_categorical"
+            and not self.has_descriptors
+        ):
+            # we dont scale the parameters if we have a fully one-hot-encoded representation
+            pass
+        else:
+            # scale the parameters
+            samples = forward_normalize(
+                samples, self.params_obj._mins_x, self.params_obj._maxs_x
+            )
+
+        X = torch.tensor(samples)
+
+        likelihood = self.cla_likelihood(self.cla_model(X.float()))
+        mean = 1.-likelihood.mean.detach() # convert p_infeas to p_feas
+        mean = mean.view(mean.shape[0], 1)
+
+        min_  = torch.amin(mean).item()
+        max_ = torch.amax(mean).item()
+
+        return min_, max_
+
     def get_aqcf_min_max(
         self,
         reg_model: gpytorch.models.ExactGP,
@@ -435,7 +483,7 @@ class BoTorchPlanner(BasePlanner):
             acqf = UpperConfidenceBound(
                 reg_model,
                 #beta=torch.tensor([0.2]).repeat(self.batch_size),
-                beta=torch.tensor([1.0]).repeat(self.batch_size),
+                beta=torch.tensor([1.]).repeat(self.batch_size),
                 objective=None,
                 maximize=False,
             )

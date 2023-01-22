@@ -43,7 +43,6 @@ class FeasibilityAwareAcquisition:
 	def compute_combined_acqf(self, acqf, p_feas):
 		"""compute the combined acqusition function"""
 		if self.feas_strategy == "fwa":
-
 			return acqf * p_feas #+ torch.maximum(torch.zeros_like(acqf), acqf-p_feas)
 		elif self.feas_strategy == "fca":
 			return acqf
@@ -135,10 +134,6 @@ class FeasibilityAwareUCBV2(AcquisitionFunction, FeasibilityAwareAcquisition):
 			- self.acqf_min_max[1][0]  # normalize sigma value
 		)
 
-		print(torch.amin(mu), torch.amax(mu))
-		print(torch.amin(sigma), torch.amax(sigma))
-
-
 		# p_feas should be 1 - P(infeasible|X) because UCB is
 		# maximized by default
 		if not "naive-" in self.feas_strategy:
@@ -167,11 +162,7 @@ class FeasibilityAwareUCBV2(AcquisitionFunction, FeasibilityAwareAcquisition):
 			raise NotImplementedError
 
 
-
-
-class FeasibilityAwareVarainceBased(
-	VarianceBased, FeasibilityAwareAcquisition
-):
+class FeasibilityAwareVarainceBased(VarianceBased, FeasibilityAwareAcquisition):
 	"""Feasibility aware variance-based sampling (active learning)"""
 
 	def __init__(
@@ -466,8 +457,6 @@ class FeasibilityAwareEI(ExpectedImprovement, FeasibilityAwareAcquisition):
 		return acqf
 
 
-
-
 class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 	def __init__(
 		self,
@@ -481,6 +470,7 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 		infeas_ratio,
 		acqf_min_max,
 		use_p_feas_only=False,
+		use_reg_only=False,
 		beta=torch.tensor([0.2]),
 		objective=None,
 		maximize=False,
@@ -499,28 +489,32 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 		self.infeas_ratio = infeas_ratio
 		self.acqf_min_max = acqf_min_max
 		self.use_p_feas_only = use_p_feas_only
+		self.use_reg_only = use_reg_only
 		self.beta = beta
 		self.objective = objective
 		self.maximize = maximize
 
 	def forward(self, X):
-
-		acqf = super().forward(X)  # get the EI acquisition
-		# approximately normalize the EI acquisition function
-		acqf = (acqf - self.acqf_min_max[0]) / (
-			self.acqf_min_max[1] - self.acqf_min_max[0]
-		)
-		# p_feas should be 1 - P(infeasible|X) because EI is
-		# maximized by default
-		if not "naive-" in self.feas_strategy:
-			p_feas = 1.0 - self.compute_feas_post(X)
-			if not self.feas_strategy == 'fca':
-				# cutoff at 0.5 (only penalize acqf if classifier believes its infeasible)
-				p_feas = torch.minimum(p_feas, torch.ones_like(p_feas)*0.5)
+		acqf = super().forward(X)  # get the UCB acquisition
+		if self.use_reg_only:
+			# do not use the feasibility part of the acquisition function
+			return acqf
 		else:
-			p_feas = 1.0
+			# approximately normalize the EI acquisition function
+			acqf = (acqf - self.acqf_min_max[0]) / (
+				self.acqf_min_max[1] - self.acqf_min_max[0]
+			)
+			# p_feas should be 1 - P(infeasible|X) because EI is
+			# maximized by default
+			if not "naive-" in self.feas_strategy:
+				p_feas = 1.0 - self.compute_feas_post(X)
+				if not self.feas_strategy == 'fca':
+					# cutoff at 0.5 (only penalize acqf if classifier believes its infeasible)
+					p_feas = torch.minimum(p_feas, torch.ones_like(p_feas)*0.5)
+			else:
+				p_feas = 1.0
 
-		return self.compute_combined_acqf(acqf, p_feas)
+			return self.compute_combined_acqf(acqf, p_feas)
 
 	def forward_unconstrained(self, X):
 		""" evaluates the acquisition function without the

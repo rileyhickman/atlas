@@ -106,7 +106,11 @@ class GeneticOptimizer:
             torch.tensor(expanded).view(expanded.shape[0], 1, expanded.shape[1])
         ).detach().numpy()[0][0]
 
-        if val <= 0:
+        # if val <= 0:
+        #     return True
+        # else:
+        #     return False
+        if val >= 0:
             return True
         else:
             return False
@@ -336,7 +340,7 @@ class GeneticOptimizer:
         # Does this re-normalize things??
         best_batch_pop_deindex = self.deindexify(best_batch_pop)
 
-        best_batch_pop_deindex = reverse_normalize(best_batch_pop_deindex,self._mins_x,self._maxs_x)
+        best_batch_pop_deindex = reverse_normalize(best_batch_pop_deindex,self.params_obj._mins_x,self.params_obj._maxs_x)
 
         best_batch = []
         for best_index, best_deindex in zip(best_batch_pop,best_batch_pop_deindex):

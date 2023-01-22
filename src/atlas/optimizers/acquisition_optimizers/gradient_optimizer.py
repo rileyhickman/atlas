@@ -88,6 +88,7 @@ class GradientOptimizer:
             nonlinear_inequality_constraints.append(self.known_constraints)
         if self.feas_strategy == "fca":
             nonlinear_inequality_constraints.append(self.fca_constraint)
+
             # attempt to get the batch initial conditions
             batch_initial_conditions = get_batch_initial_conditions(
                 num_restarts=200,
@@ -98,6 +99,8 @@ class GradientOptimizer:
                 mins_x=self._mins_x,
                 maxs_x=self._maxs_x,
             )
+
+
             if type(batch_initial_conditions) == type(None):
                 # if we cant find sufficient inital design points, resort to using the
                 # acqusition function only (without the feasibility constraint)
@@ -153,9 +156,9 @@ class GradientOptimizer:
         results, _ = optimize_acqf(
             acq_function=self.acqf,
             bounds=self.bounds,
-            num_restarts=200,
+            num_restarts=20,
             q=self.batch_size,
-            raw_samples=1000,
+            #raw_samples=1000,
             nonlinear_inequality_constraints=nonlinear_inequality_constraints,
             batch_initial_conditions=batch_initial_conditions,
         )
