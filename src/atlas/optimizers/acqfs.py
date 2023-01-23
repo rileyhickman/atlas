@@ -555,7 +555,7 @@ def get_batch_initial_conditions(
 	"""
 	# take 15*num_restarts points randomly and evaluate the constraint function on all of
 	# them, if we have enough, proceed, if not proceed to sequential rejection sampling
-	num_raw_samples = 10 * num_restarts
+	num_raw_samples = 20 * num_restarts
 	raw_samples, raw_proposals = propose_randomly(
 		num_raw_samples, param_space, has_descriptors
 	)
@@ -571,9 +571,13 @@ def get_batch_initial_conditions(
 		batch_initial_conditions = raw_samples
 		batch_initial_conditions_raw = raw_proposals
 	else:
+		# we have some constraints (could be known and or fca)
 		constraint_vals = []
 		for constraint in constraint_callable:
 			constraint_val = constraint(raw_samples)
+			# print(constraint)
+			# print(constraint_val)
+			# print(constraint_val.shape)
 			if len(constraint_val.shape) == 1:
 				constraint_val = constraint_val.view(
 					constraint_val.shape[0], 1
@@ -628,9 +632,9 @@ def sample_around_x(raw_samples, constraint_callable):
 	"""draw samples around points which we already know are feasible by adding
 	some Gaussian noise to them
 	"""
-	tiled_raw_samples = raw_samples.tile((10, 1, 1))
+	tiled_raw_samples = raw_samples.tile((20, 1, 1))
 	means = deepcopy(tiled_raw_samples)
-	stds = torch.ones_like(means) * 0.1
+	stds = torch.ones_like(means) * 0.05
 	perturb_samples = tiled_raw_samples + torch.normal(means, stds)
 	# # project the values
 	# perturb_samples = torch.where(perturb_samples>1., 1., perturb_samples)
@@ -648,7 +652,7 @@ def sample_around_x(raw_samples, constraint_callable):
 		constraint_vals = torch.cat(constraint_vals, dim=1)
 		feas_ix = torch.where(torch.all(constraint_vals >= 0))[0]
 	elif len(constraint_vals) == 1:
-		constraint_vals = torch.tensor(constraint_vals)
+		constraint_vals = torch.tensor(constraint_vals[0])
 		feas_ix = torch.where(constraint_vals >= 0)[0]
 
 	batch_initial_conditions = inputs[feas_ix, :, :]

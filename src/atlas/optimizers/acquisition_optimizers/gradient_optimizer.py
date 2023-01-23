@@ -33,6 +33,7 @@ from atlas.optimizers.utils import (
 )
 
 
+
 class GradientOptimizer:
     def __init__(
         self,

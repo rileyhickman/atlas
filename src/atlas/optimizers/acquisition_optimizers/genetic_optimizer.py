@@ -83,8 +83,10 @@ class GeneticOptimizer:
         # define which single-step optimization function to use, based on whether or not
         # we have known constraints
         if self.known_constraints != []:
+            Logger.log('GA acquisition optimizer using constrained evolution', 'INFO')
             self._one_step_evolution = self._constrained_evolution
         else:
+            Logger.log('GA acquisition optimizer using unconstrained evolution', 'INFO')
             self._one_step_evolution = self._evolution
 
         # range of opt domain dimensions
@@ -94,26 +96,21 @@ class GeneticOptimizer:
     def _wrapped_fca_constraint(self, params):
         # >= 0 is a feasible point --> True
         # < 0 is an infeasible point --> False
-
         # transform dictionary rep of x to expanded format
         expanded = self.params_obj.param_vectors_to_expanded(
             [ParameterVector().from_dict(params,self.param_space)],
-            is_scaled=False,
+            is_scaled=True,
             return_scaled=False # should already be scaled
         )
-
         val = self.fca_constraint(
             torch.tensor(expanded).view(expanded.shape[0], 1, expanded.shape[1])
         ).detach().numpy()[0][0]
 
-        # if val <= 0:
-        #     return True
-        # else:
-        #     return False
         if val >= 0:
             return True
         else:
             return False
+
 
     def _get_param_ranges(self):
         param_ranges = []
@@ -131,7 +128,6 @@ class GeneticOptimizer:
                     counter+=len(param.descriptors[0])
                 else:
                     counter+=len(param.options)
-
         return np.array(param_ranges)
 
 
@@ -156,7 +152,6 @@ class GeneticOptimizer:
                         counter+=len(p.options)
             samples.append(sample)
         return np.array(samples)
-
 
 
     def deindexify(self, x):
@@ -193,6 +188,7 @@ class GeneticOptimizer:
         return -self.acqf(x).detach().numpy()[0],
 
 
+
     def optimize(self, max_iter:int=10, show_progress:bool=True) -> List[ParameterVector]:
         """
         Returns list of parameter vectors with the optimized recommendations
@@ -211,12 +207,11 @@ class GeneticOptimizer:
             mins_x=self._mins_x,
             maxs_x=self._maxs_x,
             return_raw=True,
-        )
-        self.batch_initial_conditions = self.batch_initial_conditions.squeeze().numpy()
+        ) # scaled
+        self.batch_initial_conditions = self.batch_initial_conditions.squeeze().numpy() # scaled
 
         # indexify the discrete and categorical options
-        samples = self.indexify()
-
+        samples = self.indexify() # scaled
 
         # crossover and mutation probabilites
         CXPB = 0.5
@@ -333,8 +328,13 @@ class GeneticOptimizer:
         # select best recommendations and return them as param vectors
         acqf_vals = [self.acquisition(x)[0] for x in np.array(population)]
 
-        best_idxs = np.argsort(acqf_vals)[::-1][:self.batch_size]
+        best_idxs = np.argsort(acqf_vals)[:self.batch_size]
         best_batch_pop = np.array(population)[best_idxs]
+
+        # print(np.array(population)[:10])
+        # print(best_batch_pop[:10])
+        # print(acqf_vals[:10])
+        # print(np.array(acqf_vals)[best_idxs])
 
         # TODO: this is pretty hacky...
         # Does this re-normalize things??
@@ -400,9 +400,8 @@ class GeneticOptimizer:
 
         return offspring
 
-    def _constrained_evolution(
-        self, population, toolbox, halloffame, cxpb=0.5, mutpb=0.3
-    ):
+
+    def _constrained_evolution(self, population, toolbox, halloffame, cxpb=0.5, mutpb=0.3):
 
         # size of hall of fame
         hof_size = len(halloffame.items) if halloffame.items else 0
@@ -442,11 +441,12 @@ class GeneticOptimizer:
 
     def _evaluate_feasibility(self, sample):
         # evaluate whether the optimized sample violates the known constraints
+        # TODO: dont pass the parameter space here?? These should be scaled so they
+        # might register a 'parameter out of bounds warning message' ...
         param = param_vector_to_dict(
             sample=sample,
             param_space=self.param_space
         )
-
         feasible = [constr(param) for constr in self.known_constraints]
 
         return all(feasible)
@@ -588,9 +588,7 @@ class GeneticOptimizer:
             self._update_individual(child, new_vector)
             return
 
-    def _custom_mutation(
-        self, individual, indpb=0.3, continuous_scale=0.1, discrete_scale=0.1
-    ):
+    def _custom_mutation(self, individual, indpb=0.3, continuous_scale=0.1, discrete_scale=0.1):
         """Custom mutation that can handled continuous, discrete, and categorical variables.
         Parameters
         ----------

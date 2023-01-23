@@ -119,6 +119,7 @@ class BoTorchPlanner(BasePlanner):
         }
         super().__init__(**local_args)
 
+
     def build_train_regression_gp(
         self, train_x: torch.Tensor, train_y: torch.Tensor
     ) -> gpytorch.models.ExactGP:
@@ -192,7 +193,10 @@ class BoTorchPlanner(BasePlanner):
                 self.num_init_design_completed += (
                     1  # batch_size always 1 for init design planner
                 )
+
         else:
+            # timings dictionary for analysis
+            self.timings_dict = {}
 
             # use GP surrogate to propose the samples
             # get the scaled parameters and values for both the regression and classification data
@@ -297,7 +301,7 @@ class BoTorchPlanner(BasePlanner):
                 self.cla_likelihood.eval()
 
                 use_reg_only = False
-                
+
                 # estimate the max and min of the cla surrogate
                 self.cla_surr_min_, self.cla_surr_max_ = self.get_cla_surr_min_max(num_samples=5000)
                 self.fca_cutoff = (self.cla_surr_max_-self.cla_surr_min_)*self.feas_param + self.cla_surr_min_
@@ -426,6 +430,7 @@ class BoTorchPlanner(BasePlanner):
                 self.feas_strategy,
                 self.fca_constraint,
                 self._params,
+                self.timings_dict,
             )
             return_params = acquisition_optimizer.optimize()
 

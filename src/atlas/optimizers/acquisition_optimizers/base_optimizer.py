@@ -2,6 +2,7 @@
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import time
 import numpy as np
 import torch
 from botorch.acquisition import AcquisitionFunction
@@ -41,6 +42,8 @@ class AcquisitionOptimizer:
         feas_strategy: str,
         fca_constraint: Callable,
         params: torch.Tensor,
+        timings_dict: Dict,
+
     ):
         self.kind = kind
         self.params_obj = params_obj
@@ -51,6 +54,7 @@ class AcquisitionOptimizer:
         self.feas_strategy = feas_strategy
         self.fca_constraint = fca_constraint
         self._params = params
+        self.timings_dict = timings_dict
 
         # check kind of acquisition optimization
         if self.kind == "gradient":
@@ -66,6 +70,7 @@ class AcquisitionOptimizer:
                 self.feas_strategy,
                 self.fca_constraint,
                 self._params,
+
             )
 
         elif self.kind == "genetic":
@@ -77,6 +82,7 @@ class AcquisitionOptimizer:
                 self.feas_strategy,
                 self.fca_constraint,
                 self._params,
+
             )
 
         else:
@@ -84,11 +90,14 @@ class AcquisitionOptimizer:
             Logger.log(msg, "FATAL")
 
     def optimize(self):
+
+        start_time = time.time()
         # returns list of parameter vectors with recommendations
         results = self.optimizer.optimize()
+        self.timings_dict['acquisition_opt'] = time.time()-start_time
 
         # if we have a general parameter optimization, we use a
-        # variance-based sampling procedure to select the next general parameters
+        # variance-based sampling procedure to select the next general parameter(s)
         if self.acquisition_type == 'general':
 
             X_sns_empty, general_raw = self.acqf.generate_X_sns()
