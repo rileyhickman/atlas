@@ -166,7 +166,30 @@ class AcquisitionOptimizer:
             nonlinear_inequality_constraints.append(self.fca_constraint)
 
 
-        if self.feas_strategy == 'fca':
+        if nonlinear_inequality_constraints == []:
+            # we dont have any constraints, generate inital conditions
+
+            batch_initial_conditions, raw_conditions = get_batch_initial_conditions(
+                num_restarts=num_restarts,
+                batch_size=self.batch_size,
+                param_space=self.params_obj.param_space,
+                constraint_callable=[],
+                has_descriptors=self.has_descriptors,
+                mins_x=self.params_obj._mins_x,
+                maxs_x=self.params_obj._maxs_x,
+                return_raw=return_raw,
+            )
+
+            return (
+                None, # nonlinear_inequality_constraints
+                batch_initial_conditions, # initial conditions
+                raw_conditions, # raw conditions (gradient doesnt need)
+            )
+
+        else:
+
+        # TODO: it shouldnt matter if we are using FCA or not here.. .
+        # if self.feas_strategy == 'fca':
 
             # attempt to get the batch initial conditions
             batch_initial_conditions, raw_conditions = get_batch_initial_conditions(
@@ -187,6 +210,7 @@ class AcquisitionOptimizer:
                 Logger.log(msg, "WARNING")
 
                 nonlinear_inequality_constraints = []
+                return_nonlinear_inequality_constraints = []
 
                 # try again
                 batch_initial_conditions, raw_conditions = get_batch_initial_conditions(
@@ -206,58 +230,41 @@ class AcquisitionOptimizer:
                     Logger.log(message, "FATAL")
                 elif type(batch_initial_conditions) == torch.Tensor:
                     # weve found sufficient conditions on the second try, nothing to do
-                    pass
+                    return (
+                        None, # nonlinear_inequality_constraints
+                        batch_initial_conditions, # initial conditions
+                        raw_conditions, # raw conditions (gradient doesnt need)
+                    )
             elif type(batch_initial_conditions) == torch.Tensor:
                 # we've found initial conditions on the first try, nothing to do
-                pass
-
-            return (
-                return_nonlinear_inequality_constraints, # nonlinear_inequality_constraints
-                batch_initial_conditions, # initial conditions
-                raw_conditions, # raw conditions (gradient doesnt need)
-            )
-
-        else:
-            # we dont have fca constraints, check if we have known constraints,
-            if len(nonlinear_inequality_constraints)>0:
-
-                batch_initial_conditions, raw_conditions = get_batch_initial_conditions(
-                    num_restarts=num_restarts,
-                    batch_size=self.batch_size,
-                    param_space=self.params_obj.param_space,
-                    constraint_callable=nonlinear_inequality_constraints,
-                    has_descriptors=self.has_descriptors,
-                    mins_x=self.params_obj._mins_x,
-                    maxs_x=self.params_obj._maxs_x,
-                    return_raw=return_raw,
-                )
-                if type(batch_initial_conditions) == type(None):
-                    # return an error to the user
-                    message = "Could not find inital conditions for constrianed optimization..."
-                    Logger.log(message, "FATAL")
-
                 return (
                     return_nonlinear_inequality_constraints, # nonlinear_inequality_constraints
                     batch_initial_conditions, # initial conditions
                     raw_conditions, # raw conditions (gradient doesnt need)
                 )
 
-        if nonlinear_inequality_constraints == []:
-            # we dont have any constraints, generate inital conditions
 
-            batch_initial_conditions, raw_conditions = get_batch_initial_conditions(
-                num_restarts=num_restarts,
-                batch_size=self.batch_size,
-                param_space=self.params_obj.param_space,
-                constraint_callable=[],
-                has_descriptors=self.has_descriptors,
-                mins_x=self.params_obj._mins_x,
-                maxs_x=self.params_obj._maxs_x,
-                return_raw=return_raw,
-            )
-
-            return (
-                None, # nonlinear_inequality_constraints
-                batch_initial_conditions, # initial conditions
-                raw_conditions, # raw conditions (gradient doesnt need)
-            )
+        # else:
+        #     # we dont have fca constraints, check if we have known constraints,
+        #     if len(nonlinear_inequality_constraints)>0:
+        #
+        #         batch_initial_conditions, raw_conditions = get_batch_initial_conditions(
+        #             num_restarts=num_restarts,
+        #             batch_size=self.batch_size,
+        #             param_space=self.params_obj.param_space,
+        #             constraint_callable=nonlinear_inequality_constraints,
+        #             has_descriptors=self.has_descriptors,
+        #             mins_x=self.params_obj._mins_x,
+        #             maxs_x=self.params_obj._maxs_x,
+        #             return_raw=return_raw,
+        #         )
+        #         if type(batch_initial_conditions) == type(None):
+        #             # return an error to the user
+        #             message = "Could not find inital conditions for constrianed optimization..."
+        #             Logger.log(message, "FATAL")
+        #
+        #         return (
+        #             return_nonlinear_inequality_constraints, # nonlinear_inequality_constraints
+        #             batch_initial_conditions, # initial conditions
+        #             raw_conditions, # raw conditions (gradient doesnt need)
+        #         )

@@ -553,7 +553,7 @@ def get_batch_initial_conditions(
 			a torch.tensor with shape (num_restarts, batch_size, num_dims)
 			of initial optimization conditions
 	"""
-	# take 15*num_restarts points randomly and evaluate the constraint function on all of
+	# take 20*num_restarts points randomly and evaluate the constraint function on all of
 	# them, if we have enough, proceed, if not proceed to sequential rejection sampling
 	num_raw_samples = 20 * num_restarts
 	raw_samples, raw_proposals = propose_randomly(
@@ -599,24 +599,30 @@ def get_batch_initial_conditions(
 			)
 		return batch_initial_conditions[:num_restarts, :, :]
 	elif 0 < batch_initial_conditions.shape[0] < num_restarts:
-		print(
-			f">>> insufficient samples, resorting to local sampling for {num_chances} iterations..."
+		Logger.log(
+			f'Insufficient initial samples, resorting to local sampling for {num_chances} iterations...',
+			'WARNING',
 		)
 		for chance in range(num_chances):
 			batch_initial_conditions = sample_around_x(
 				batch_initial_conditions, constraint_callable
 			)
-			print(
-				f"chance {chance}\t num feas {batch_initial_conditions.shape[0]}"
-			)
+			Logger.log(f'Chance : {chance+1}/{num_chances}\t# samples : {batch_initial_conditions.shape[0]}', 'INFO')
+
 			if batch_initial_conditions.shape[0] >= num_restarts:
+				if return_raw:
+					return (
+						batch_initial_conditions[:num_restarts, :, :],
+						batch_initial_conditions_raw[:num_restarts, :]
+					)
 				return batch_initial_conditions[:num_restarts, :, :]
-		return None
+		return None, None
 	else:
-		print(
-			">>> insufficient samples, resorting to unconstrained acquisition"
+		Logger.log(
+			f'Insufficient initial samples after {num_chances} sampling iterations. Resorting to unconstrained acquisition',
+			'WARNING',
 		)
-		return None
+		return None, None
 
 	assert len(batch_initial_conditions.size()) == 3
 

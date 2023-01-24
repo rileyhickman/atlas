@@ -18,7 +18,6 @@ from olympus.campaigns import ParameterSpace
 
 from atlas.optimizers.acqfs import (
     create_available_options,
-    get_batch_initial_conditions,
 )
 from atlas.optimizers.params import Parameters
 from atlas.optimizers.utils import (
@@ -77,21 +76,6 @@ class GeneticOptimizer(AcquisitionOptimizer):
         self._maxs_x = self.params_obj._maxs_x
 
         self.kind = 'genetic'
-
-        # if constraints not None, and not a list, put into a list
-        # if known_constraints is not None and isinstance(known_constraints, list) is False:
-        #     self.known_constraints = [known_constraints]
-        # elif known_constraints == None:
-        #     self.known_constraints = []
-        # else:
-        #     self.known_constraints = known_constraints
-        #
-        # if self.feas_strategy == 'fca':
-        #     # wrap this to be compatible with the True/False constriant convention for constraints
-        #     self.wrapped_fca_constraint_func = self._wrapped_fca_constraint
-        #     self.known_constraints.append(self.wrapped_fca_constraint_func)
-        #
-        #
 
         # range of opt domain dimensions
         self.param_ranges = self._get_param_ranges()
@@ -207,6 +191,7 @@ class GeneticOptimizer(AcquisitionOptimizer):
         ) = self.gen_initial_conditions()
 
         self.batch_initial_conditions = self.batch_initial_conditions.squeeze().numpy() # scaled
+        
 
         # define which single-step optimization function to use, based on whether or not
         # we have known constraints

@@ -41,7 +41,6 @@ from atlas.optimizers.acqfs import (
     FeasibilityAwareVarainceBased,
     VarianceBased,
     create_available_options,
-    get_batch_initial_conditions,
 )
 from atlas.optimizers.acquisition_optimizers import (
     GradientOptimizer, GeneticOptimizer

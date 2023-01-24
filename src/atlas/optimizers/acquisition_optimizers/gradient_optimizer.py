@@ -17,7 +17,6 @@ from olympus.campaigns import ParameterSpace
 from atlas import Logger
 from atlas.optimizers.acqfs import (
     create_available_options,
-    get_batch_initial_conditions,
 )
 from atlas.optimizers.params import Parameters
 from atlas.optimizers.utils import (
