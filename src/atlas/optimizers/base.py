@@ -703,7 +703,7 @@ class BasePlanner(CustomPlanner):
                 >= 0 is a feasible point
                 <  0 is an infeasible point
         Args:
-                X (torch.tensor):
+                X (torch.tensor): 2d torch tensor with constraint values
         """
         # handle the various potential input tensor sizes (this function can be called from
         # several places, including inside botorch)

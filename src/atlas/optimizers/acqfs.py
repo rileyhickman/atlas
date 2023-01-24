@@ -575,9 +575,6 @@ def get_batch_initial_conditions(
 		constraint_vals = []
 		for constraint in constraint_callable:
 			constraint_val = constraint(raw_samples)
-			# print(constraint)
-			# print(constraint_val)
-			# print(constraint_val.shape)
 			if len(constraint_val.shape) == 1:
 				constraint_val = constraint_val.view(
 					constraint_val.shape[0], 1

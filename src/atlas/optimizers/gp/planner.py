@@ -43,8 +43,8 @@ from atlas.optimizers.acqfs import (
     create_available_options,
     get_batch_initial_conditions,
 )
-from atlas.optimizers.acquisition_optimizers.base_optimizer import (
-    AcquisitionOptimizer,
+from atlas.optimizers.acquisition_optimizers import (
+    GradientOptimizer, GeneticOptimizer
 )
 from atlas.optimizers.base import BasePlanner
 from atlas.optimizers.gps import (
@@ -419,19 +419,31 @@ class BoTorchPlanner(BasePlanner):
                 msg = f"Acquisition function type {self.acquisition_type} not understood!"
                 Logger.log(msg, "FATAL")
 
-            # optimize acquisition function
-            acquisition_optimizer = AcquisitionOptimizer(
-                self.acquisition_optimizer_kind,
-                self.params_obj,
-                self.acquisition_type,
-                self.acqf,
-                self.known_constraints,
-                self.batch_size,
-                self.feas_strategy,
-                self.fca_constraint,
-                self._params,
-                self.timings_dict,
-            )
+            if self.acquisition_optimizer_kind == 'gradient':
+                acquisition_optimizer = GradientOptimizer(
+                    self.params_obj,
+                    self.acquisition_type,
+                    self.acqf,
+                    self.known_constraints,
+                    self.batch_size,
+                    self.feas_strategy,
+                    self.fca_constraint,
+                    self._params,
+                    self.timings_dict,
+                )
+            elif self.acquisition_optimizer_kind == 'genetic':
+                acquisition_optimizer = GeneticOptimizer(
+                    self.params_obj,
+                    self.acquisition_type,
+                    self.acqf,
+                    self.known_constraints,
+                    self.batch_size,
+                    self.feas_strategy,
+                    self.fca_constraint,
+                    self._params,
+                    self.timings_dict,
+                )
+
             return_params = acquisition_optimizer.optimize()
 
         return return_params

@@ -2,6 +2,8 @@
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+from abc import abstractmethod
+
 import time
 import numpy as np
 import torch
@@ -9,13 +11,14 @@ from botorch.acquisition import AcquisitionFunction
 from olympus.campaigns import ParameterSpace
 
 from atlas import Logger
-from atlas.optimizers.acqfs import VarianceBased
-from atlas.optimizers.acquisition_optimizers.genetic_optimizer import (
-    GeneticOptimizer,
-)
-from atlas.optimizers.acquisition_optimizers.gradient_optimizer import (
-    GradientOptimizer,
-)
+from atlas.optimizers.acqfs import VarianceBased, get_batch_initial_conditions
+# from atlas.optimizers.acquisition_optimizers.genetic_optimizer import (
+#     GeneticOptimizer,
+# )
+# from atlas.optimizers.acquisition_optimizers.gradient_optimizer import (
+#     GradientOptimizer,
+# )
+
 from atlas.optimizers.params import Parameters
 from atlas.optimizers.utils import (
     cat_param_to_feat,
@@ -33,7 +36,6 @@ from atlas.optimizers.utils import (
 class AcquisitionOptimizer:
     def __init__(
         self,
-        kind: str,
         params_obj: Parameters,
         acquisition_type: str,
         acqf: AcquisitionFunction,
@@ -43,9 +45,9 @@ class AcquisitionOptimizer:
         fca_constraint: Callable,
         params: torch.Tensor,
         timings_dict: Dict,
+        **kwargs: Any,
 
     ):
-        self.kind = kind
         self.params_obj = params_obj
         self.acquisition_type = acquisition_type
         self.acqf = acqf
@@ -57,43 +59,47 @@ class AcquisitionOptimizer:
         self.timings_dict = timings_dict
 
         # check kind of acquisition optimization
-        if self.kind == "gradient":
-            if self.known_constraints is not None:
-                msg = 'Gradient acquisition optimizer does not current support known constraints, please use the Genetic optimizer'
-                Logger.log(msg, 'FATAL')
+        # if self.kind == "gradient":
+        #     if self.known_constraints is not None:
+        #         msg = 'Gradient acquisition optimizer does not current support known constraints, please use the Genetic optimizer'
+        #         Logger.log(msg, 'FATAL')
+        #
+        #     self.optimizer = GradientOptimizer(
+        #         self.params_obj,
+        #         self.acqf,
+        #         self.known_constraints,
+        #         self.batch_size,
+        #         self.feas_strategy,
+        #         self.fca_constraint,
+        #         self._params,
+        #
+        #     )
+        #
+        # elif self.kind == "genetic":
+        #     self.optimizer = GeneticOptimizer(
+        #         self.params_obj,
+        #         self.acqf,
+        #         self.known_constraints,
+        #         self.batch_size,
+        #         self.feas_strategy,
+        #         self.fca_constraint,
+        #         self._params,
+        #
+        #     )
+        #
+        # else:
+        #     msg = f"Acquisition optimizer kind {self.kind} not known"
+        #     Logger.log(msg, "FATAL")
 
-            self.optimizer = GradientOptimizer(
-                self.params_obj,
-                self.acqf,
-                self.known_constraints,
-                self.batch_size,
-                self.feas_strategy,
-                self.fca_constraint,
-                self._params,
-
-            )
-
-        elif self.kind == "genetic":
-            self.optimizer = GeneticOptimizer(
-                self.params_obj,
-                self.acqf,
-                self.known_constraints,
-                self.batch_size,
-                self.feas_strategy,
-                self.fca_constraint,
-                self._params,
-
-            )
-
-        else:
-            msg = f"Acquisition optimizer kind {self.kind} not known"
-            Logger.log(msg, "FATAL")
+    @abstractmethod
+    def _optimize(self):
+        ...
 
     def optimize(self):
 
         start_time = time.time()
         # returns list of parameter vectors with recommendations
-        results = self.optimizer.optimize()
+        results = self._optimize()
         self.timings_dict['acquisition_opt'] = time.time()-start_time
 
         # if we have a general parameter optimization, we use a
@@ -128,3 +134,130 @@ class AcquisitionOptimizer:
                     results[ix][self.params_obj.param_space[gen_param_ix].name] = select_gen_params[gen_param_ix]
 
         return results
+
+
+
+    def gen_initial_conditions(self, num_restarts:int=200, return_raw:bool=True):
+        """ generates inital conditions, particularly for problems with
+        known constraints, or if using the FCA feasibiity-aware method for
+        problems with unknown constraints
+        """
+
+        # TODO: take care of the known constraints and/or inequality constraints
+        # ....
+
+        nonlinear_inequality_constraints = []
+        return_nonlinear_inequality_constraints = []
+
+        if isinstance(self.known_constraints, list):
+            nonlinear_inequality_constraints.extend(self.known_constraints)
+            return_nonlinear_inequality_constraints.extend(self.known_constraints)
+        elif isinstance(self.known_constraints, Callable):
+            nonlinear_inequality_constraints.append(self.known_constraints)
+            return_nonlinear_inequality_constraints.append(self.known_constraints)
+
+        if self.feas_strategy == 'fca':
+            if self.kind == 'genetic':
+                # add wrapped fca constraint if genetic algorithm optimizer
+                return_nonlinear_inequality_constraints.append(self._wrapped_fca_constraint)
+            else:
+                return_nonlinear_inequality_constraints.append(self.fca_constraint)
+
+            nonlinear_inequality_constraints.append(self.fca_constraint)
+
+
+        if self.feas_strategy == 'fca':
+
+            # attempt to get the batch initial conditions
+            batch_initial_conditions, raw_conditions = get_batch_initial_conditions(
+                num_restarts=num_restarts,
+                batch_size=self.batch_size,
+                param_space=self.params_obj.param_space,
+                constraint_callable=nonlinear_inequality_constraints,
+                has_descriptors=self.has_descriptors,
+                mins_x=self.params_obj._mins_x,
+                maxs_x=self.params_obj._maxs_x,
+                return_raw=return_raw,
+            )
+
+            if type(batch_initial_conditions) == type(None):
+                # if we cant find sufficient inital design points, resort to using the
+                # acqusition function only (without the feasibility constraint)
+                msg = "Insufficient starting points for constrianed acqf optimization, resorting to optimization of regression acqf only"
+                Logger.log(msg, "WARNING")
+
+                nonlinear_inequality_constraints = []
+
+                # try again
+                batch_initial_conditions, raw_conditions = get_batch_initial_conditions(
+                    num_restarts=num_restarts,
+                    batch_size=self.batch_size,
+                    param_space=self.params_obj.param_space,
+                    constraint_callable=nonlinear_inequality_constraints,
+                    has_descriptors=self.has_descriptors,
+                    mins_x=self.params_obj._mins_x,
+                    maxs_x=self.params_obj._maxs_x,
+                    return_raw=return_raw,
+                )
+
+                if type(batch_initial_conditions) == type(None):
+                    # if we still cannot find initial conditions, there is likey a problem, return to user
+                    message = "Could not find inital conditions for constrianed optimization..."
+                    Logger.log(message, "FATAL")
+                elif type(batch_initial_conditions) == torch.Tensor:
+                    # weve found sufficient conditions on the second try, nothing to do
+                    pass
+            elif type(batch_initial_conditions) == torch.Tensor:
+                # we've found initial conditions on the first try, nothing to do
+                pass
+
+            return (
+                return_nonlinear_inequality_constraints, # nonlinear_inequality_constraints
+                batch_initial_conditions, # initial conditions
+                raw_conditions, # raw conditions (gradient doesnt need)
+            )
+
+        else:
+            # we dont have fca constraints, check if we have known constraints,
+            if len(nonlinear_inequality_constraints)>0:
+
+                batch_initial_conditions, raw_conditions = get_batch_initial_conditions(
+                    num_restarts=num_restarts,
+                    batch_size=self.batch_size,
+                    param_space=self.params_obj.param_space,
+                    constraint_callable=nonlinear_inequality_constraints,
+                    has_descriptors=self.has_descriptors,
+                    mins_x=self.params_obj._mins_x,
+                    maxs_x=self.params_obj._maxs_x,
+                    return_raw=return_raw,
+                )
+                if type(batch_initial_conditions) == type(None):
+                    # return an error to the user
+                    message = "Could not find inital conditions for constrianed optimization..."
+                    Logger.log(message, "FATAL")
+
+                return (
+                    return_nonlinear_inequality_constraints, # nonlinear_inequality_constraints
+                    batch_initial_conditions, # initial conditions
+                    raw_conditions, # raw conditions (gradient doesnt need)
+                )
+
+        if nonlinear_inequality_constraints == []:
+            # we dont have any constraints, generate inital conditions
+
+            batch_initial_conditions, raw_conditions = get_batch_initial_conditions(
+                num_restarts=num_restarts,
+                batch_size=self.batch_size,
+                param_space=self.params_obj.param_space,
+                constraint_callable=[],
+                has_descriptors=self.has_descriptors,
+                mins_x=self.params_obj._mins_x,
+                maxs_x=self.params_obj._maxs_x,
+                return_raw=return_raw,
+            )
+
+            return (
+                None, # nonlinear_inequality_constraints
+                batch_initial_conditions, # initial conditions
+                raw_conditions, # raw conditions (gradient doesnt need)
+            )
