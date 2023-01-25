@@ -527,8 +527,6 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 		return acqf
 
 
-
-
 def get_batch_initial_conditions(
 	num_restarts,
 	batch_size,

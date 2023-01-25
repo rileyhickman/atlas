@@ -191,7 +191,9 @@ class GeneticOptimizer(AcquisitionOptimizer):
         ) = self.gen_initial_conditions()
 
         self.batch_initial_conditions = self.batch_initial_conditions.squeeze().numpy() # scaled
-        
+
+        if type(self.nonlinear_inequality_constraints) == type(None):
+            self.nonlinear_inequality_constraints = []
 
         # define which single-step optimization function to use, based on whether or not
         # we have known constraints

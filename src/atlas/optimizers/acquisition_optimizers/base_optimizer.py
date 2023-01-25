@@ -242,29 +242,3 @@ class AcquisitionOptimizer:
                     batch_initial_conditions, # initial conditions
                     raw_conditions, # raw conditions (gradient doesnt need)
                 )
-
-
-        # else:
-        #     # we dont have fca constraints, check if we have known constraints,
-        #     if len(nonlinear_inequality_constraints)>0:
-        #
-        #         batch_initial_conditions, raw_conditions = get_batch_initial_conditions(
-        #             num_restarts=num_restarts,
-        #             batch_size=self.batch_size,
-        #             param_space=self.params_obj.param_space,
-        #             constraint_callable=nonlinear_inequality_constraints,
-        #             has_descriptors=self.has_descriptors,
-        #             mins_x=self.params_obj._mins_x,
-        #             maxs_x=self.params_obj._maxs_x,
-        #             return_raw=return_raw,
-        #         )
-        #         if type(batch_initial_conditions) == type(None):
-        #             # return an error to the user
-        #             message = "Could not find inital conditions for constrianed optimization..."
-        #             Logger.log(message, "FATAL")
-        #
-        #         return (
-        #             return_nonlinear_inequality_constraints, # nonlinear_inequality_constraints
-        #             batch_initial_conditions, # initial conditions
-        #             raw_conditions, # raw conditions (gradient doesnt need)
-        #         )
