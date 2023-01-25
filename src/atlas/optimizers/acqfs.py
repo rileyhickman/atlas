@@ -26,8 +26,6 @@ from atlas.optimizers.utils import (
 
 
 
-
-
 class FeasibilityAwareAcquisition:
 	def compute_feas_post(self, X):
 		"""computes the posterior P(infeasible|X)
