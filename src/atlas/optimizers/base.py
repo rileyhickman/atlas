@@ -70,6 +70,7 @@ class BasePlanner(CustomPlanner):
         goal: str,
         feas_strategy: Optional[str] = "naive-0",
         feas_param: Optional[float] = 0.2,
+        use_min_filter: bool = True,
         batch_size: int = 1,
         random_seed: Optional[int] = None,
         use_descriptors: bool = False,
@@ -103,6 +104,7 @@ class BasePlanner(CustomPlanner):
         self.goal = goal
         self.feas_strategy = feas_strategy
         self.feas_param = feas_param
+        self.use_min_filter = use_min_filter
         self.batch_size = batch_size
         if random_seed is None:
             self.random_seed = np.random.randint(0, int(10e6))

@@ -92,6 +92,7 @@ class BoTorchPlanner(BasePlanner):
         goal: str,
         feas_strategy: Optional[str] = "naive-0",
         feas_param: Optional[float] = 0.2,
+        use_min_filter: bool = True,
         batch_size: int = 1,
         random_seed: Optional[int] = None,
         use_descriptors: bool = False,
@@ -370,6 +371,7 @@ class BoTorchPlanner(BasePlanner):
                     use_reg_only=use_reg_only,
                     #beta=torch.tensor([0.2]).repeat(self.batch_size),
                     beta=torch.tensor([1.]).repeat(self.batch_size),
+                    use_min_filter=self.use_min_filter,
                 )
             elif self.acquisition_type == "ucbv2":
                 self.acqf = FeasibilityAwareUCBV2(

@@ -470,6 +470,7 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 		use_p_feas_only=False,
 		use_reg_only=False,
 		beta=torch.tensor([0.2]),
+		use_min_filter=True,
 		objective=None,
 		maximize=False,
 		**kwargs,
@@ -489,6 +490,7 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 		self.use_p_feas_only = use_p_feas_only
 		self.use_reg_only = use_reg_only
 		self.beta = beta
+		self.use_min_filter = use_min_filter
 		self.objective = objective
 		self.maximize = maximize
 
@@ -508,7 +510,10 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 				p_feas = 1.0 - self.compute_feas_post(X)
 				if not self.feas_strategy == 'fca':
 					# cutoff at 0.5 (only penalize acqf if classifier believes its infeasible)
-					p_feas = torch.minimum(p_feas, torch.ones_like(p_feas)*0.5)
+					if self.use_min_filter:
+						p_feas = torch.minimum(p_feas, torch.ones_like(p_feas)*0.5)
+					else:
+						pass
 			else:
 				p_feas = 1.0
 
