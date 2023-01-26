@@ -338,6 +338,7 @@ class BoTorchPlanner(BasePlanner):
                         self.feas_param,
                         infeas_ratio,
                         acqf_min_max,
+                        use_min_filter=self.use_min_filter,
                     )
                 elif self.batch_size > 1:
                     if self.problem_type == "fully_continuous":
@@ -354,6 +355,7 @@ class BoTorchPlanner(BasePlanner):
                         self.feas_param,
                         infeas_ratio,
                         acqf_min_max,
+                        use_min_filter=self.use_min_filter,
                     )
 
 
@@ -386,6 +388,7 @@ class BoTorchPlanner(BasePlanner):
                     acqf_min_max,
                     #beta=torch.tensor([0.2]).repeat(self.batch_size),
                     beta=torch.tensor([0.2]).repeat(self.batch_size),
+                    use_min_filter=self.use_min_filter,
                 )
 
             elif self.acquisition_type == "variance":
@@ -399,6 +402,7 @@ class BoTorchPlanner(BasePlanner):
                     self.feas_param,
                     infeas_ratio,
                     acqf_min_max,
+                    use_min_filter=self.use_min_filter,
                 )
 
             elif self.acquisition_type == "general":
@@ -414,6 +418,7 @@ class BoTorchPlanner(BasePlanner):
                     self.feas_param,
                     infeas_ratio,
                     acqf_min_max,
+                    use_min_filter=self.use_min_filter,
                 )
 
             else:

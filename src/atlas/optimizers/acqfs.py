@@ -27,7 +27,7 @@ from atlas.optimizers.utils import (
 
 
 class FeasibilityAwareAcquisition:
-	def compute_feas_post(self, X):
+	def compute_feas_post(self, X:torch.Tensor):
 		"""computes the posterior P(infeasible|X)
 		Args:
 				X (torch.tensor): input tensor with shape (num_samples, q_batch_size, num_dims)
@@ -37,24 +37,37 @@ class FeasibilityAwareAcquisition:
 				self.cla_model(X.float().squeeze(1))
 			).mean
 
-
 	def compute_combined_acqf(self, acqf, p_feas):
 		"""compute the combined acqusition function"""
 		if self.feas_strategy == "fwa":
-			return acqf * p_feas #+ torch.maximum(torch.zeros_like(acqf), acqf-p_feas)
+			return acqf * self.p_feas_postprocess(p_feas)
 		elif self.feas_strategy == "fca":
 			return acqf
 		elif self.feas_strategy == "fia":
 			return ((1.0 - self.infeas_ratio**self.feas_param) * acqf) + (
-				(self.infeas_ratio**self.feas_param) * (p_feas)
+				(self.infeas_ratio**self.feas_param) * (self.p_feas_postprocess(p_feas))
 			)
 		elif "naive-" in self.feas_strategy:
 			if self.use_p_feas_only:
+				# we do not filter in this case
 				return p_feas
 			else:
 				return acqf
 		else:
 			raise NotImplementedError
+
+	def _p_feas_filter(self, p_feas, filter_val:float=0.5):
+		return torch.minimum(p_feas, torch.ones_like(p_feas)*filter_val)
+
+	def _p_feas_nofilter(self, p_feas):
+		return p_feas
+
+	def set_p_feas_postprocess(self):
+		if self.use_min_filter:
+			self.p_feas_postprocess = self._p_feas_filter
+		else:
+			self.p_feas_postprocess = self._p_feas_nofilter
+
 
 
 class VarianceBased(AcquisitionFunction):
@@ -89,6 +102,7 @@ class FeasibilityAwareUCBV2(AcquisitionFunction, FeasibilityAwareAcquisition):
 		acqf_min_max,
 		use_p_feas_only=False,
 		beta=torch.tensor([0.2]),
+		use_min_filter=True,
 		objective=None,
 		maximize=False,
 		**kwargs,
@@ -109,7 +123,10 @@ class FeasibilityAwareUCBV2(AcquisitionFunction, FeasibilityAwareAcquisition):
 		self.beta = beta
 		self.objective = objective
 		self.maximize = maximize
+		self.use_min_filter = use_min_filter
 
+		# set the p_feas postprocessing step
+		self.set_p_feas_postprocess()
 
 
 	def forward(self, X):
@@ -175,6 +192,7 @@ class FeasibilityAwareVarainceBased(VarianceBased, FeasibilityAwareAcquisition):
 		infeas_ratio,
 		acqf_min_max,
 		use_p_feas_only=False,
+		use_min_filter=True,
 		objective=None,
 		maximize=False,
 		**kwargs,
@@ -191,6 +209,11 @@ class FeasibilityAwareVarainceBased(VarianceBased, FeasibilityAwareAcquisition):
 		self.acqf_min_max = acqf_min_max
 		self.use_p_feas_only = use_p_feas_only
 		self.maximize = maximize
+		self.use_min_filter = use_min_filter
+
+		# set the p_feas postprocessing step
+		self.set_p_feas_postprocess()
+
 
 	def forward(self, X):
 		acqf = super().forward(X)
@@ -224,6 +247,7 @@ class FeasibilityAwareGeneral(AcquisitionFunction, FeasibilityAwareAcquisition):
 		infeas_ratio,
 		acqf_min_max,
 		use_p_feas_only=False,
+		use_min_filter=True,
 		objective=None,
 		maximize=False,
 		**kwargs,
@@ -241,6 +265,10 @@ class FeasibilityAwareGeneral(AcquisitionFunction, FeasibilityAwareAcquisition):
 		self.acqf_min_max = acqf_min_max
 		self.use_p_feas_only = use_p_feas_only
 		self.maximize = maximize
+		self.use_min_filter = use_min_filter
+
+		# set the p_feas postprocessing step
+		self.set_p_feas_postprocess()
 
 		self.X_sns_empty, _ = self.generate_X_sns()
 		self.functional_dims = np.logical_not(self.params_obj.exp_general_mask)
@@ -356,6 +384,7 @@ class FeasibilityAwareQEI(qExpectedImprovement, FeasibilityAwareAcquisition):
 		infeas_ratio,
 		acqf_min_max,
 		use_p_feas_only=False,
+		use_min_filter=True,
 		objective=None,
 		maximize=False,
 		**kwargs,
@@ -372,6 +401,10 @@ class FeasibilityAwareQEI(qExpectedImprovement, FeasibilityAwareAcquisition):
 		self.infeas_ratio = infeas_ratio
 		self.acqf_min_max = acqf_min_max
 		self.use_p_feas_only = use_p_feas_only
+		self.use_min_filter = use_min_filter
+
+		# set the p_feas postprocessing step
+		self.set_p_feas_postprocess()
 
 	def forward(self, X):
 		acqf = super().forward(X)  # get the EI acquisition
@@ -416,6 +449,7 @@ class FeasibilityAwareEI(ExpectedImprovement, FeasibilityAwareAcquisition):
 		infeas_ratio,
 		acqf_min_max,
 		use_p_feas_only=False,
+		use_min_filter=True,
 		objective=None,
 		maximize=False,
 		**kwargs,
@@ -430,6 +464,11 @@ class FeasibilityAwareEI(ExpectedImprovement, FeasibilityAwareAcquisition):
 		self.infeas_ratio = infeas_ratio
 		self.acqf_min_max = acqf_min_max
 		self.use_p_feas_only = use_p_feas_only
+		self.use_min_filter = use_min_filter
+
+		# set the p_feas postprocessing step
+		self.set_p_feas_postprocess()
+
 
 	def forward(self, X):
 
@@ -494,6 +533,10 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 		self.objective = objective
 		self.maximize = maximize
 
+		# set the p_feas postprocessing step
+		self.set_p_feas_postprocess()
+
+
 	def forward(self, X):
 		acqf = super().forward(X)  # get the UCB acquisition
 		if self.use_reg_only:
@@ -508,12 +551,7 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 			# maximized by default
 			if not "naive-" in self.feas_strategy:
 				p_feas = 1.0 - self.compute_feas_post(X)
-				if not self.feas_strategy == 'fca':
-					# cutoff at 0.5 (only penalize acqf if classifier believes its infeasible)
-					if self.use_min_filter:
-						p_feas = torch.minimum(p_feas, torch.ones_like(p_feas)*0.5)
-					else:
-						pass
+
 			else:
 				p_feas = 1.0
 
