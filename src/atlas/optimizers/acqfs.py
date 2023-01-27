@@ -9,9 +9,11 @@ import pandas as pd
 import torch
 from botorch.acquisition import (
 	AcquisitionFunction,
+	AnalyticAcquisitionFunction,
 	ExpectedImprovement,
 	UpperConfidenceBound,
 )
+
 from botorch.acquisition.monte_carlo import (
 	qExpectedImprovement,
 	qNoisyExpectedImprovement,
@@ -110,6 +112,24 @@ class VarianceBased(AcquisitionFunction):
 		)
 
 		return sigma.view(view_shape)
+
+class LowerConfidenceBound(AnalyticAcquisitionFunction):
+	def __init__(self, model, beta, maximize=False, posterior_transform=None, **kwargs) -> None:
+		super().__init__(model=model, posterior_transform=posterior_transform, **kwargs)
+		self.reg_model = model
+		self.posterior_transform = posterior_transform
+		self.maximize = maximize
+		self.beta = beta
+
+	def forward(self, X):
+		# mean, sigma = self._mean_and_sigma(X)
+		posterior = self.reg_model.posterior(
+            X=X, posterior_transform=self.posterior_transform
+        )
+		mean = posterior.mean.squeeze(-2).squeeze(-1)
+		sigma = posterior.variance.clamp_min(1e-12).sqrt().view(mean.shape)
+		acqf = (mean if self.maximize else -mean) - self.beta.sqrt()*sigma
+		return acqf
 
 
 class FeasibilityAwareUCBV2(AcquisitionFunction, FeasibilityAwareAcquisition):
@@ -532,6 +552,52 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 		acqf = super().forward(X)
 		return self.compute_combined_acqf(acqf, X)
 
+
+class FeasibilityAwareLCB(LowerConfidenceBound, FeasibilityAwareAcquisition):
+	def __init__(
+		self,
+		reg_model,
+		cla_model,
+		cla_likelihood,
+		param_space,
+		best_f,
+		feas_strategy,
+		feas_param,
+		infeas_ratio,
+		acqf_min_max,
+		use_p_feas_only=False,
+		use_reg_only=False,
+		beta=torch.tensor([0.2]),
+		use_min_filter=True,
+		objective=None,
+		maximize=False,
+		**kwargs,
+	) -> None:
+		super().__init__(model=reg_model, beta=beta, posterior_transform=None, **kwargs)
+		self.reg_model = reg_model
+		self.cla_model = cla_model
+		self.cla_likelihood = cla_likelihood
+		self.param_space = param_space
+		self.best_f = best_f
+		self.feas_strategy = feas_strategy
+		self.feas_param = feas_param
+		self.feas_strategy = feas_strategy
+		self.feas_param = feas_param
+		self.infeas_ratio = infeas_ratio
+		self.acqf_min_max = acqf_min_max
+		self.use_p_feas_only = use_p_feas_only
+		self.use_reg_only = use_reg_only
+		self.beta = beta
+		self.use_min_filter = use_min_filter
+		self.objective = objective
+		self.maximize = maximize
+		# set the p_feas postprocessing step
+		self.set_p_feas_postprocess()
+
+
+	def forward(self, X):
+		acqf = super().forward(X)
+		return self.compute_combined_acqf(acqf, X)
 
 
 

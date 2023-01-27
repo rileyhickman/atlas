@@ -35,11 +35,13 @@ from atlas import Logger
 from atlas.optimizers.acqfs import (
     FeasibilityAwareEI,
     FeasibilityAwareUCB,
+    FeasibilityAwareLCB,
     FeasibilityAwareUCBV2,
     FeasibilityAwareGeneral,
     FeasibilityAwareQEI,
     FeasibilityAwareVarainceBased,
     VarianceBased,
+    LowerConfidenceBound,
     create_available_options,
 )
 from atlas.optimizers.acquisition_optimizers import (
@@ -377,6 +379,24 @@ class BoTorchPlanner(BasePlanner):
                     beta=torch.tensor([1.]).repeat(self.batch_size),
                     use_min_filter=self.use_min_filter,
                 )
+
+            elif self.acquisition_type == "lcb":
+                self.acqf = FeasibilityAwareLCB(
+                    self.reg_model,
+                    self.cla_model,
+                    self.cla_likelihood,
+                    self.param_space,
+                    f_best_scaled,
+                    self.feas_strategy,
+                    self.feas_param,
+                    infeas_ratio,
+                    acqf_min_max,
+                    use_reg_only=use_reg_only,
+                    #beta=torch.tensor([0.2]).repeat(self.batch_size),
+                    beta=torch.tensor([1.]).repeat(self.batch_size),
+                    use_min_filter=self.use_min_filter,
+                )
+
             elif self.acquisition_type == "ucbv2":
                 self.acqf = FeasibilityAwareUCBV2(
                     self.reg_model,
@@ -511,6 +531,14 @@ class BoTorchPlanner(BasePlanner):
 
         elif self.acquisition_type == "ucb":
             acqf = UpperConfidenceBound(
+                reg_model,
+                #beta=torch.tensor([0.2]).repeat(self.batch_size),
+                beta=torch.tensor([1.]).repeat(self.batch_size),
+                objective=None,
+                maximize=False,
+            )
+        elif self.acquisition_type == "lcb":
+            acqf = LowerConfidenceBound(
                 reg_model,
                 #beta=torch.tensor([0.2]).repeat(self.batch_size),
                 beta=torch.tensor([1.]).repeat(self.batch_size),
