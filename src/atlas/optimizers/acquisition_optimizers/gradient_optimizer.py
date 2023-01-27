@@ -17,7 +17,6 @@ from olympus.campaigns import ParameterSpace
 from atlas import Logger
 from atlas.optimizers.acqfs import (
     create_available_options,
-    get_batch_initial_conditions,
 )
 from atlas.optimizers.params import Parameters
 from atlas.optimizers.utils import (
@@ -31,28 +30,41 @@ from atlas.optimizers.utils import (
     reverse_normalize,
     reverse_standardize,
 )
+from atlas.optimizers.acquisition_optimizers.base_optimizer import AcquisitionOptimizer
 
 
-class GradientOptimizer:
+
+class GradientOptimizer(AcquisitionOptimizer):
     def __init__(
         self,
         params_obj: Parameters,
+        acquisition_type: str,
         acqf: AcquisitionFunction,
-        known_constraints: Callable,
+        known_constraints: Union[Callable, List[Callable]],
         batch_size: int,
         feas_strategy: str,
         fca_constraint: Callable,
         params: torch.Tensor,
+        timings_dict: Dict,
+        use_reg_only=False,
+        **kwargs: Any,
     ):
+        local_args = {
+            key: val for key, val in locals().items() if key != "self"
+        }
+        super().__init__(**local_args)
+
         self.params_obj = params_obj
         self.param_space = self.params_obj.param_space
         self.problem_type = infer_problem_type(self.param_space)
+        self.acquisition_type = acquisition_type
         self.acqf = acqf
         self.bounds = self.params_obj.bounds
         self.known_constraints = known_constraints
         self.batch_size = batch_size
         self.feas_strategy = feas_strategy
         self.fca_constraint = fca_constraint
+        self.use_reg_only = use_reg_only
         self.has_descriptors = self.params_obj.has_descriptors
         self._params = params
         self._mins_x = self.params_obj._mins_x
@@ -60,7 +72,9 @@ class GradientOptimizer:
 
         self.choices_feat, self.choices_cat = None, None
 
-    def optimize(self):
+        self.kind = 'gradient'
+
+    def _optimize(self):
 
         best_idx = None  # only needed for the fully categorical case
         if self.problem_type == "fully_continuous":
@@ -82,83 +96,22 @@ class GradientOptimizer:
 
     def _optimize_fully_continuous(self):
 
-        nonlinear_inequality_constraints = []
-        if callable(self.known_constraints):
-            # we have some known constraints
-            nonlinear_inequality_constraints.append(self.known_constraints)
-        if self.feas_strategy == "fca":
-            nonlinear_inequality_constraints.append(self.fca_constraint)
-            # attempt to get the batch initial conditions
-            batch_initial_conditions = get_batch_initial_conditions(
-                num_restarts=200,
-                batch_size=self.batch_size,
-                param_space=self.param_space,
-                constraint_callable=nonlinear_inequality_constraints,
-                has_descriptors=self.has_descriptors,
-                mins_x=self._mins_x,
-                maxs_x=self._maxs_x,
-            )
-            if type(batch_initial_conditions) == type(None):
-                # if we cant find sufficient inital design points, resort to using the
-                # acqusition function only (without the feasibility constraint)
-                msg = "Insufficient starting points for constrianed acqf optimization, resorting to optimization of regression acqf only"
-                Logger.log(msg, "WARNING")
-                nonlinear_inequality_constraints = (
-                    nonlinear_inequality_constraints.pop()
-                )
-                # try again with only the a priori known constraints
-                batch_initial_conditions = get_batch_initial_conditions(
-                    num_restarts=200,
-                    batch_size=self.batch_size,
-                    param_space=self.param_space,
-                    constraint_callable=nonlinear_inequality_constraints,
-                    has_descriptors=self.has_descriptors,
-                    mins_x=self._mins_x,
-                    maxs_x=self._maxs_x,
-                )
-
-                if type(batch_initial_conditions) == type(None):
-                    # if we still cannot find initial conditions, there is likey a problem, return to user
-                    message = "Could not find inital conditions for constrianed optimization..."
-                    Logger.log(message, "FATAL")
-                elif type(batch_initial_conditions) == torch.Tensor:
-                    # weve found sufficient conditions on the second try, nothing to do
-                    pass
-            elif type(batch_initial_conditions) == torch.Tensor:
-                # we've found initial conditions on the first try, nothing to do
-                pass
-        else:
-            # we dont have fca constraints, if we have known constraints,
-            if callable(self.known_constraints):
-
-                batch_initial_conditions = get_batch_initial_conditions(
-                    num_restarts=200,
-                    batch_size=self.batch_size,
-                    param_space=self.param_space,
-                    constraint_callable=nonlinear_inequality_constraints,
-                    has_descriptors=self.has_descriptors,
-                    mins_x=self._mins_x,
-                    maxs_x=self._maxs_x,
-                )
-                if type(batch_initial_conditions) == type(None):
-                    # return an error to the user
-                    message = "Could not find inital conditions for constrianed optimization..."
-                    Logger.log(message, "FATAL")
-
-        if not self.known_constraints and not self.feas_strategy == "fca":
-            # we dont have any constraints
-            nonlinear_inequality_constraints = None
-            batch_initial_conditions = None
+        (
+            nonlinear_inequality_constraints,
+            batch_initial_conditions,
+            _
+        ) = self.gen_initial_conditions()
 
         results, _ = optimize_acqf(
             acq_function=self.acqf,
             bounds=self.bounds,
-            num_restarts=200,
+            num_restarts=20,
             q=self.batch_size,
             raw_samples=1000,
             nonlinear_inequality_constraints=nonlinear_inequality_constraints,
             batch_initial_conditions=batch_initial_conditions,
         )
+
 
         return results
 
@@ -497,3 +450,9 @@ class GradientOptimizer:
                 )
 
         return return_params
+
+    def dummy_constraint(self, X):
+        """ dummy constraint that always returns value >= 0., i.e.
+        evaluates any parameter space point as feasible
+        """
+        return torch.ones(X.shape[0]).unsqueeze(-1)

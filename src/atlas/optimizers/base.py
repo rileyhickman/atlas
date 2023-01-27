@@ -2,6 +2,7 @@
 
 import os
 import pickle
+import math
 import sys
 import time
 from copy import deepcopy
@@ -70,6 +71,7 @@ class BasePlanner(CustomPlanner):
         goal: str,
         feas_strategy: Optional[str] = "naive-0",
         feas_param: Optional[float] = 0.2,
+        use_min_filter: bool = True,
         batch_size: int = 1,
         random_seed: Optional[int] = None,
         use_descriptors: bool = False,
@@ -103,6 +105,7 @@ class BasePlanner(CustomPlanner):
         self.goal = goal
         self.feas_strategy = feas_strategy
         self.feas_param = feas_param
+        self.use_min_filter = use_min_filter
         self.batch_size = batch_size
         if random_seed is None:
             self.random_seed = np.random.randint(0, int(10e6))
@@ -246,12 +249,15 @@ class BasePlanner(CustomPlanner):
 
         return model, likelihood
 
+
+
     def train_vgp(
         self,
         model: gpytorch.models.ApproximateGP,
         likelihood: gpytorch.likelihoods.BernoulliLikelihood,
         train_x: torch.Tensor,
         train_y: torch.Tensor,
+        cross_validate: str = True,
     ) -> Tuple[
         gpytorch.models.ApproximateGP, gpytorch.likelihoods.BernoulliLikelihood
     ]:
@@ -262,23 +268,123 @@ class BasePlanner(CustomPlanner):
 
         mll = gpytorch.mlls.VariationalELBO(likelihood, model, train_y.numel())
 
-        # TODO: might be better to break into batches here...
-        # NOTE: we could also do some sort of cross-validation here for early stopping
-        start_time = time.time()
-        with gpytorch.settings.cholesky_jitter(self.max_jitter):
-            for iter_ in track(
-                range(self.vgp_iters), description="Training variational GP..."
-            ):
-                optimizer.zero_grad()
-                output = model(train_x)
-                loss = -mll(output, train_y)
-                loss.backward()
-                optimizer.step()
-        vgp_train_time = time.time() - start_time
-        msg = f" Classification surrogate VGP trained in {round(vgp_train_time,3)} sec ({self.vgp_iters} epochs)\t Loss : {round(loss.item(), 3)} "
-        Logger.log(msg, "INFO")
+        # cross-validation parameters
+        num_folds = 3
+        min_obs = 10
+        es_patience = 300
+        count_after_iter = 50
+
+
+        if cross_validate and train_y.shape[0] >= min_obs:
+
+            idx_0 = torch.where(train_y==0.)[0]
+            idx_1 = torch.where(train_y==1.)[0]
+            num_0, num_1 = len(idx_0), len(idx_1)
+
+            if num_0 >= num_1:
+                num_tiles = num_0//num_1
+                y_infl = torch.tile(train_y[idx_1], dims=(num_tiles,))
+                X_infl = torch.tile(train_x[idx_1], dims=(num_tiles,1))
+            else:
+                num_tiles = num_1//num_0
+                y_infl = torch.tile(train_y[idx_0], dims=(num_tiles,))
+                X_infl = torch.tile(train_x[idx_0], dims=(num_tiles,1))
+
+            train_y_infl = torch.cat([train_y, y_infl])
+            train_x_infl = torch.cat([train_x, X_infl])
+
+
+            folds = []
+
+            fold_size = math.ceil(train_y_infl.shape[0]/num_folds)
+            indices = torch.randperm(train_y_infl.shape[0])#torch.arange(train_y_infl.shape[0])
+
+            # cross validation procedure
+            for fold_ix in range(num_folds):
+
+                # create fold data
+                train_x_fold, train_y_fold = train_x_infl[indices[fold_size:], :], train_y_infl[indices[fold_size:]]
+                valid_x_fold, valid_y_fold = train_x_infl[indices[:fold_size], :], train_y_infl[indices[:fold_size]]
+
+                # create new model and likelihood for fold
+                model_fold = ClassificationGPMatern(train_x_fold, train_y_fold)
+                likelihood_fold = gpytorch.likelihoods.BernoulliLikelihood()
+                optimizer_fold = torch.optim.Adam(model_fold.parameters(), lr=self.vgp_lr)
+                mll_fold = gpytorch.mlls.VariationalELBO(likelihood_fold, model_fold, train_y_fold.numel())
+
+                model_fold.train()
+                likelihood_fold.train()
+
+                folds.append({
+                    'model': model_fold, 'likelihood': likelihood_fold,
+                    'optimizer': optimizer_fold, 'mll': mll_fold,
+                    'train_x': train_x_fold, 'train_y': train_y_fold,
+                    'valid_x': valid_x_fold, 'valid_y': valid_y_fold,
+                })
+
+                indices = torch.roll(indices, fold_size)
+
+            num_epochs_fold = []
+
+            # train model on folds with early stopping
+            for fold_ix, fold in enumerate(folds):
+                train_losses, valid_losses = [], []
+                start_time = time.time()
+                model_fold, likelihood_fold = fold['model'], fold['likelihood']
+                optimizer_fold, mll_fold = fold['optimizer'], fold['mll']
+                with gpytorch.settings.cholesky_jitter(self.max_jitter):
+
+                    best_loss = 1.e8
+                    patience_iter_ = 0
+                    for iter_ in track(
+                        range(self.vgp_iters), description=f'Training variational GP on fold {fold_ix+1}/{num_folds}'
+                    ):
+                        optimizer_fold.zero_grad()
+                        train_pred = model_fold(fold['train_x'])
+                        valid_pred = model_fold(fold['valid_x'])
+                        train_loss = -mll_fold(train_pred, fold['train_y'])
+                        valid_loss = -mll_fold(valid_pred, fold['valid_y'])
+
+                        if iter_ > count_after_iter:
+                            if valid_loss < best_loss:
+                                best_loss = valid_loss
+                                patience_iter_ = 0  # reset patience
+                            else:
+                                patience_iter_ += 1 # increment patience
+
+                            if patience_iter_ > es_patience:
+                                break  # early stopping criteria met
+
+                        train_losses.append(train_loss)
+                        valid_losses.append(valid_loss)
+
+                        train_loss.backward()
+                        optimizer_fold.step()
+
+
+                vgp_train_time = time.time() - start_time
+                msg = f" Classification surrogate VGP trained in {round(vgp_train_time,3)} sec ({iter_} epochs)\t Loss : {round(train_loss.item(), 3)} "
+                Logger.log(msg, "INFO")
+                # TODO: update this
+                num_epochs_fold.append(iter_)
+
+            # train model on all observations
+            num_iters_full = int(np.mean(num_epochs_fold))
+            with gpytorch.settings.cholesky_jitter(self.max_jitter):
+                for iter_ in track(
+                    range(num_iters_full), description=f"Training variational GP on all observations ..."
+                ):
+                    optimizer.zero_grad()
+                    output = model(train_x)
+                    loss = -mll(output, train_y)
+                    loss.backward()
+                    optimizer.step()
+            vgp_train_time = time.time() - start_time
+            msg = f" Classification surrogate VGP trained in {round(vgp_train_time,3)} sec ({num_iters_full} epochs)\t Loss : {round(loss.item(), 3)} "
+            Logger.log(msg, "INFO")
 
         return model, likelihood
+
 
     def build_train_data(self) -> Tuple[torch.Tensor, torch.tensor]:
         """build the training dataset at each iteration"""
@@ -445,6 +551,9 @@ class BasePlanner(CustomPlanner):
 
         return pred_mu, pred_sigma
 
+
+
+
     def cla_surrogate(
         self,
         X: torch.Tensor,
@@ -507,6 +616,7 @@ class BasePlanner(CustomPlanner):
         X: torch.Tensor,
         return_np: bool = True,
         normalize: bool = True,
+        unconstrained: bool = False,
     ) -> Union[torch.Tensor, np.ndarray]:
 
         X_proc = []
@@ -541,9 +651,11 @@ class BasePlanner(CustomPlanner):
                 X_proc, self.params_obj._mins_x, self.params_obj._maxs_x
             )
 
-        acqf_vals = self.acqf(
-            X_proc.view(X_proc.shape[0], 1, X_proc.shape[-1])
-        ).detach()
+        X_proc = X_proc.view(X_proc.shape[0], 1, X_proc.shape[-1])
+        if unconstrained:
+            acqf_vals = self.acqf.forward_unconstrained(X_proc).detach()
+        else:
+            acqf_vals = self.acqf(X_proc).detach()
 
         acqf_vals = acqf_vals.view(acqf_vals.shape[0], 1)
 
@@ -556,6 +668,8 @@ class BasePlanner(CustomPlanner):
             acqf_vals = acqf_vals.numpy()
 
         return acqf_vals
+
+
 
     def _tell(self, observations: olympus.campaigns.observations.Observations):
         """unpack the current observations from Olympus
@@ -593,7 +707,7 @@ class BasePlanner(CustomPlanner):
                 >= 0 is a feasible point
                 <  0 is an infeasible point
         Args:
-                X (torch.tensor):
+                X (torch.tensor): 2d torch tensor with constraint values
         """
         # handle the various potential input tensor sizes (this function can be called from
         # several places, including inside botorch)
@@ -611,14 +725,8 @@ class BasePlanner(CustomPlanner):
                 .mean.unsqueeze(-1)
                 .double()
             )
-            if self.problem_type in ["fully_categorical", "fully_discrete"]:
-                _max = torch.amax(p_infeas)
-                _min = torch.amin(p_infeas)
-                if not torch.abs(_max - _min) > 1e-6:
-                    _max = 1.0
-                    _min = 0.0
-                p_infeas = (p_infeas - _min) / (_max - _min)
-            constraint_val = (1.0 - p_infeas) - self.feas_param
-            # constraint_val = (1. - self.cla_likelihood(self.cla_model(X.float())).mean.unsqueeze(-1).double()) - self.feas_param
+            # convert to range of values expected by botorch/gpytorch acqusition optimizer
+            constraint_val = (1. - p_infeas) - self.fca_cutoff
+
 
         return constraint_val

@@ -69,9 +69,9 @@ class Orchestrator:
     def func_to_full_params(
         self,
         func_batch_params: List[ParameterVector],
-        full_param_space: ParameterSpace, 
+        full_param_space: ParameterSpace,
         full_space_instructions: Dict[str, List[str]],
-    ) -> List[ParameterVector]: 
+    ) -> List[ParameterVector]:
         full_batch_params = []
 
         for func_params in func_batch_params:

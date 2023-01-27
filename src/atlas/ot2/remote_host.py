@@ -72,8 +72,8 @@ class Host(object):
 
     def get_file(self, source_file:str, dest_path:str, recursive=False):
         self.scp_client.get(
-            source_file, 
-            local_path=dest_path, 
+            source_file,
+            local_path=dest_path,
             recursive=recursive,
             preserve_times=True,
         )
@@ -91,8 +91,8 @@ class Host(object):
 if __name__ == '__main__':
 
     host = Host(
-            hostname='192.168.0.168', 
-            username='root', 
+            hostname='192.168.0.168',
+            username='root',
             key_filename='/Users/rileyhickman/.ssh/id_rsa',
         )
 

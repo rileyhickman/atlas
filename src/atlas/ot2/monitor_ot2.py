@@ -102,6 +102,3 @@ if __name__ == "__main__":
         params = monitor.monitor()
         print('PARAMS : ', params)
         monitor.execute(params)
-
-
-

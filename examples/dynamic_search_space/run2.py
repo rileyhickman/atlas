@@ -43,7 +43,7 @@ from atlas.optimizers.params import Parameters, ParameterContinuous
 from atlas.optimizers.utils import (
     cat_param_to_feat,
     forward_normalize,
-    forward_standardize,
+    forward_standardize,ial
     get_cat_dims,
     get_fixed_features_list,
     infer_problem_type,

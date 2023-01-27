@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import numpy as np
 import botorch
 import gpytorch
 import torch
@@ -13,6 +14,8 @@ from gpytorch.variational import (
     UnwhitenedVariationalStrategy,
     VariationalStrategy,
 )
+
+from gpytorch.priors import NormalPrior
 
 
 class ClassificationGPMatern(ApproximateGP):
@@ -39,7 +42,12 @@ class ClassificationGPMatern(ApproximateGP):
         )
         super(ClassificationGPMatern, self).__init__(variational_strategy)
         self.mean_module = gpytorch.means.ConstantMean()
-        self.covar_module = ScaleKernel(MaternKernel())  # RBFKernel())
+        lambda_=100.
+        #scale=1.*np.exp(-train_y.shape[0]/lambda_)
+        # self.covar_module = ScaleKernel(MaternKernel(
+        #     lengthscale_prior=NormalPrior(loc=0., scale=scale)
+        #     ))  # RBFKernel())
+        self.covar_module = ScaleKernel(MaternKernel())
 
     def forward(self, x):
         mean_x = self.mean_module(x)
