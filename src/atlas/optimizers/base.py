@@ -723,16 +723,6 @@ class BasePlanner(CustomPlanner):
                 .mean.unsqueeze(-1)
                 .double()
             )
-            # if self.problem_type in ["fully_categorical", "fully_discrete"]:
-            #     _max = torch.amax(p_infeas)
-            #     _min = torch.amin(p_infeas)
-            #     if not torch.abs(_max - _min) > 1e-6:
-            #         _max = 1.0
-            #         _min = 0.0
-            #     p_infeas = (p_infeas - _min) / (_max - _min)
-            # constraint_val = (1.0 - p_infeas) - self.feas_param
-            # constraint_val = (1. - self.cla_likelihood(self.cla_model(X.float())).mean.unsqueeze(-1).double()) - self.feas_param
-
             # convert to range of values expected by botorch/gpytorch acqusition optimizer
             constraint_val = (1. - p_infeas) - self.fca_cutoff
 

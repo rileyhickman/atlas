@@ -46,6 +46,7 @@ class GradientOptimizer(AcquisitionOptimizer):
         fca_constraint: Callable,
         params: torch.Tensor,
         timings_dict: Dict,
+        use_reg_only=False,
         **kwargs: Any,
     ):
         local_args = {
@@ -63,6 +64,7 @@ class GradientOptimizer(AcquisitionOptimizer):
         self.batch_size = batch_size
         self.feas_strategy = feas_strategy
         self.fca_constraint = fca_constraint
+        self.use_reg_only = use_reg_only
         self.has_descriptors = self.params_obj.has_descriptors
         self._params = params
         self._mins_x = self.params_obj._mins_x
@@ -109,6 +111,7 @@ class GradientOptimizer(AcquisitionOptimizer):
             nonlinear_inequality_constraints=nonlinear_inequality_constraints,
             batch_initial_conditions=batch_initial_conditions,
         )
+
 
         return results
 

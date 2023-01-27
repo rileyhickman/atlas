@@ -37,24 +37,41 @@ class FeasibilityAwareAcquisition:
 				self.cla_model(X.float().squeeze(1))
 			).mean
 
-	def compute_combined_acqf(self, acqf, p_feas):
+	def compute_combined_acqf(self, acqf, X):
 		"""compute the combined acqusition function"""
-		if self.feas_strategy == "fwa":
-			return acqf * self.p_feas_postprocess(p_feas)
-		elif self.feas_strategy == "fca":
+
+		# approximately normalize the UCB acquisition function
+		acqf = (acqf - self.acqf_min_max[0]) / (
+			self.acqf_min_max[1] - self.acqf_min_max[0]
+		)
+
+		if self.use_reg_only:
 			return acqf
-		elif self.feas_strategy == "fia":
-			return ((1.0 - self.infeas_ratio**self.feas_param) * acqf) + (
-				(self.infeas_ratio**self.feas_param) * (self.p_feas_postprocess(p_feas))
-			)
-		elif "naive-" in self.feas_strategy:
-			if self.use_p_feas_only:
-				# we do not filter in this case
-				return p_feas
-			else:
-				return acqf
 		else:
-			raise NotImplementedError
+			# p_feas should be 1 - P(infeasible|X) because EI is
+			# maximized by default
+			if not "naive-" in self.feas_strategy:
+				p_feas = 1.0 - self.compute_feas_post(X)
+
+			else:
+				p_feas = 1.0
+
+			if self.feas_strategy == "fwa":
+				return acqf * self.p_feas_postprocess(p_feas)
+			elif self.feas_strategy == "fca":
+				return acqf
+			elif self.feas_strategy == "fia":
+				return ((1.0 - self.infeas_ratio**self.feas_param) * acqf) + (
+					(self.infeas_ratio**self.feas_param) * (self.p_feas_postprocess(p_feas))
+				)
+			elif "naive-" in self.feas_strategy:
+				if self.use_p_feas_only:
+					# we do not filter in this case
+					return p_feas
+				else:
+					return acqf
+			else:
+				raise NotImplementedError
 
 	def _p_feas_filter(self, p_feas, filter_val:float=0.5):
 		return torch.minimum(p_feas, torch.ones_like(p_feas)*filter_val)
@@ -67,6 +84,14 @@ class FeasibilityAwareAcquisition:
 			self.p_feas_postprocess = self._p_feas_filter
 		else:
 			self.p_feas_postprocess = self._p_feas_nofilter
+
+	def forward_unconstrained(self, X):
+		""" evaluates the acquisition function without the
+		feasibility portion, i.e. $\alpha(x)$ in the paper
+		"""
+		acqf = super().forward(X)
+		return acqf
+
 
 
 
@@ -101,6 +126,7 @@ class FeasibilityAwareUCBV2(AcquisitionFunction, FeasibilityAwareAcquisition):
 		infeas_ratio,
 		acqf_min_max,
 		use_p_feas_only=False,
+		use_reg_only=False,
 		beta=torch.tensor([0.2]),
 		use_min_filter=True,
 		objective=None,
@@ -124,6 +150,7 @@ class FeasibilityAwareUCBV2(AcquisitionFunction, FeasibilityAwareAcquisition):
 		self.objective = objective
 		self.maximize = maximize
 		self.use_min_filter = use_min_filter
+		self.use_reg_only = use_reg_only
 
 		# set the p_feas postprocessing step
 		self.set_p_feas_postprocess()
@@ -192,6 +219,7 @@ class FeasibilityAwareVarainceBased(VarianceBased, FeasibilityAwareAcquisition):
 		infeas_ratio,
 		acqf_min_max,
 		use_p_feas_only=False,
+		use_reg_only=False,
 		use_min_filter=True,
 		objective=None,
 		maximize=False,
@@ -210,23 +238,13 @@ class FeasibilityAwareVarainceBased(VarianceBased, FeasibilityAwareAcquisition):
 		self.use_p_feas_only = use_p_feas_only
 		self.maximize = maximize
 		self.use_min_filter = use_min_filter
-
+		self.use_reg_only = use_reg_only
 		# set the p_feas postprocessing step
 		self.set_p_feas_postprocess()
 
 
 	def forward(self, X):
 		acqf = super().forward(X)
-		acqf = (acqf - self.acqf_min_max[0]) / (
-			self.acqf_min_max[1]
-			- self.acqf_min_max[0]  # normalize sigma value
-		)
-
-		if not "naive-" in self.feas_strategy:
-			p_feas = 1.0 - self.compute_feas_post(X)
-		else:
-			p_feas = 1.0
-
 		return self.compute_combined_acqf(acqf, p_feas)
 
 
@@ -247,6 +265,7 @@ class FeasibilityAwareGeneral(AcquisitionFunction, FeasibilityAwareAcquisition):
 		infeas_ratio,
 		acqf_min_max,
 		use_p_feas_only=False,
+		use_reg_only=False,
 		use_min_filter=True,
 		objective=None,
 		maximize=False,
@@ -266,6 +285,7 @@ class FeasibilityAwareGeneral(AcquisitionFunction, FeasibilityAwareAcquisition):
 		self.use_p_feas_only = use_p_feas_only
 		self.maximize = maximize
 		self.use_min_filter = use_min_filter
+		self.use_reg_only = use_reg_only
 
 		# set the p_feas postprocessing step
 		self.set_p_feas_postprocess()
@@ -384,6 +404,7 @@ class FeasibilityAwareQEI(qExpectedImprovement, FeasibilityAwareAcquisition):
 		infeas_ratio,
 		acqf_min_max,
 		use_p_feas_only=False,
+		use_reg_only=False,
 		use_min_filter=True,
 		objective=None,
 		maximize=False,
@@ -402,24 +423,13 @@ class FeasibilityAwareQEI(qExpectedImprovement, FeasibilityAwareAcquisition):
 		self.acqf_min_max = acqf_min_max
 		self.use_p_feas_only = use_p_feas_only
 		self.use_min_filter = use_min_filter
-
+		self.use_reg_only = use_reg_only
 		# set the p_feas postprocessing step
 		self.set_p_feas_postprocess()
 
 	def forward(self, X):
-		acqf = super().forward(X)  # get the EI acquisition
-		# approximately normalize the EI acquisition function
-		acqf = (acqf - self.acqf_min_max[0]) / (
-			self.acqf_min_max[1] - self.acqf_min_max[0]
-		)
-		# p_feas should be 1 - P(feasible|X) because EI is
-		# maximized by default
-		if not "naive-" in self.feas_strategy:
-			p_feas = 1.0 - self.compute_feas_post(X)
-		else:
-			p_feas = 1.0
-
-		return self.compute_combined_acqf(acqf, p_feas)
+		acqf = super().forward(X)
+		return self.compute_combined_acqf(acqf, X)
 
 
 class FeasibilityAwareEI(ExpectedImprovement, FeasibilityAwareAcquisition):
@@ -449,6 +459,7 @@ class FeasibilityAwareEI(ExpectedImprovement, FeasibilityAwareAcquisition):
 		infeas_ratio,
 		acqf_min_max,
 		use_p_feas_only=False,
+		use_reg_only=False,
 		use_min_filter=True,
 		objective=None,
 		maximize=False,
@@ -465,33 +476,14 @@ class FeasibilityAwareEI(ExpectedImprovement, FeasibilityAwareAcquisition):
 		self.acqf_min_max = acqf_min_max
 		self.use_p_feas_only = use_p_feas_only
 		self.use_min_filter = use_min_filter
-
+		self.use_reg_only = use_reg_only
 		# set the p_feas postprocessing step
 		self.set_p_feas_postprocess()
 
 
 	def forward(self, X):
-
 		acqf = super().forward(X)  # get the EI acquisition
-		# approximately normalize the EI acquisition function
-		acqf = (acqf - self.acqf_min_max[0]) / (
-			self.acqf_min_max[1] - self.acqf_min_max[0]
-		)
-		# p_feas should be 1 - P(infeasible|X) because EI is
-		# maximized by default
-		if not "naive-" in self.feas_strategy:
-			p_feas = 1.0 - self.compute_feas_post(X)
-		else:
-			p_feas = 1.0
-
-		return self.compute_combined_acqf(acqf, p_feas)
-
-	def forward_unconstrained(self, X):
-		""" evaluates the acquisition function without the
-		feasibility portion, i.e. $\alpha(x)$ in the paper
-		"""
-		acqf = super().forward(X)
-		return acqf
+		return self.compute_combined_acqf(acqf, X)
 
 
 class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
@@ -532,37 +524,16 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 		self.use_min_filter = use_min_filter
 		self.objective = objective
 		self.maximize = maximize
-
 		# set the p_feas postprocessing step
 		self.set_p_feas_postprocess()
 
 
 	def forward(self, X):
-		acqf = super().forward(X)  # get the UCB acquisition
-		if self.use_reg_only:
-			# do not use the feasibility part of the acquisition function
-			return acqf
-		else:
-			# approximately normalize the EI acquisition function
-			acqf = (acqf - self.acqf_min_max[0]) / (
-				self.acqf_min_max[1] - self.acqf_min_max[0]
-			)
-			# p_feas should be 1 - P(infeasible|X) because EI is
-			# maximized by default
-			if not "naive-" in self.feas_strategy:
-				p_feas = 1.0 - self.compute_feas_post(X)
-
-			else:
-				p_feas = 1.0
-
-			return self.compute_combined_acqf(acqf, p_feas)
-
-	def forward_unconstrained(self, X):
-		""" evaluates the acquisition function without the
-		feasibility portion, i.e. $\alpha(x)$ in the paper
-		"""
 		acqf = super().forward(X)
-		return acqf
+		return self.compute_combined_acqf(acqf, X)
+
+
+
 
 
 def get_batch_initial_conditions(

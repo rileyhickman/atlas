@@ -47,6 +47,7 @@ class GeneticOptimizer(AcquisitionOptimizer):
         fca_constraint: Callable,
         params: torch.Tensor,
         timings_dict: Dict,
+        use_reg_only:bool=False,
         **kwargs: Any,
     ):
         """
@@ -70,6 +71,7 @@ class GeneticOptimizer(AcquisitionOptimizer):
         self.feas_strategy = feas_strategy
         self.fca_constraint = fca_constraint
         self.known_constraints = known_constraints
+        self.use_reg_only = use_reg_only
         self.has_descriptors = self.params_obj.has_descriptors
         self._params = params
         self._mins_x = self.params_obj._mins_x

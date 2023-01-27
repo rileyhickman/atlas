@@ -339,6 +339,7 @@ class BoTorchPlanner(BasePlanner):
                         infeas_ratio,
                         acqf_min_max,
                         use_min_filter=self.use_min_filter,
+                        use_reg_only=use_reg_only,
                     )
                 elif self.batch_size > 1:
                     if self.problem_type == "fully_continuous":
@@ -356,6 +357,7 @@ class BoTorchPlanner(BasePlanner):
                         infeas_ratio,
                         acqf_min_max,
                         use_min_filter=self.use_min_filter,
+                        use_reg_only=use_reg_only,
                     )
 
 
@@ -386,6 +388,7 @@ class BoTorchPlanner(BasePlanner):
                     self.feas_param,
                     infeas_ratio,
                     acqf_min_max,
+                    use_reg_only=use_reg_only,
                     #beta=torch.tensor([0.2]).repeat(self.batch_size),
                     beta=torch.tensor([0.2]).repeat(self.batch_size),
                     use_min_filter=self.use_min_filter,
@@ -403,6 +406,7 @@ class BoTorchPlanner(BasePlanner):
                     infeas_ratio,
                     acqf_min_max,
                     use_min_filter=self.use_min_filter,
+                    use_reg_only=use_reg_only,
                 )
 
             elif self.acquisition_type == "general":
@@ -419,6 +423,7 @@ class BoTorchPlanner(BasePlanner):
                     infeas_ratio,
                     acqf_min_max,
                     use_min_filter=self.use_min_filter,
+                    use_reg_only=use_reg_only,
                 )
 
             else:
@@ -436,6 +441,7 @@ class BoTorchPlanner(BasePlanner):
                     self.fca_constraint,
                     self._params,
                     self.timings_dict,
+                    use_reg_only=use_reg_only,
                 )
             elif self.acquisition_optimizer_kind == 'genetic':
                 acquisition_optimizer = GeneticOptimizer(
@@ -448,6 +454,7 @@ class BoTorchPlanner(BasePlanner):
                     self.fca_constraint,
                     self._params,
                     self.timings_dict,
+                    use_reg_only=use_reg_only,
                 )
 
             return_params = acquisition_optimizer.optimize()

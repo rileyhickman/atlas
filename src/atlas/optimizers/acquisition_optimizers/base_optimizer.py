@@ -58,38 +58,6 @@ class AcquisitionOptimizer:
         self._params = params
         self.timings_dict = timings_dict
 
-        # check kind of acquisition optimization
-        # if self.kind == "gradient":
-        #     if self.known_constraints is not None:
-        #         msg = 'Gradient acquisition optimizer does not current support known constraints, please use the Genetic optimizer'
-        #         Logger.log(msg, 'FATAL')
-        #
-        #     self.optimizer = GradientOptimizer(
-        #         self.params_obj,
-        #         self.acqf,
-        #         self.known_constraints,
-        #         self.batch_size,
-        #         self.feas_strategy,
-        #         self.fca_constraint,
-        #         self._params,
-        #
-        #     )
-        #
-        # elif self.kind == "genetic":
-        #     self.optimizer = GeneticOptimizer(
-        #         self.params_obj,
-        #         self.acqf,
-        #         self.known_constraints,
-        #         self.batch_size,
-        #         self.feas_strategy,
-        #         self.fca_constraint,
-        #         self._params,
-        #
-        #     )
-        #
-        # else:
-        #     msg = f"Acquisition optimizer kind {self.kind} not known"
-        #     Logger.log(msg, "FATAL")
 
     @abstractmethod
     def _optimize(self):
@@ -156,7 +124,8 @@ class AcquisitionOptimizer:
             nonlinear_inequality_constraints.append(self.known_constraints)
             return_nonlinear_inequality_constraints.append(self.known_constraints)
 
-        if self.feas_strategy == 'fca':
+        if self.feas_strategy == 'fca' and not self.use_reg_only:
+
             if self.kind == 'genetic':
                 # add wrapped fca constraint if genetic algorithm optimizer
                 return_nonlinear_inequality_constraints.append(self._wrapped_fca_constraint)
