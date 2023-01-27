@@ -2,7 +2,6 @@
 
 import glob
 import pickle
-
 import numpy as np
 import olympus
 from olympus.campaigns import Campaign, ParameterSpace
@@ -119,6 +118,7 @@ for model_kind in MODELS:
 
                 planner.set_param_space(campaign.param_space)
 
+        
                 # start the optimization experiment
                 iteration = 0
                 # optimization loop

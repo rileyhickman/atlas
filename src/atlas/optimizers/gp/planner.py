@@ -151,6 +151,8 @@ class BoTorchPlanner(BasePlanner):
         mll = ExactMarginalLogLikelihood(model.likelihood, model)
         # fit the GP
         start_time = time.time()
+
+        
         with gpytorch.settings.cholesky_jitter(self.max_jitter):
             fit_gpytorch_model(mll)
         gp_train_time = time.time() - start_time

@@ -53,11 +53,12 @@ from atlas.optimizers.utils import (
 )
 
 def contour(param_space, campaign, name):
-    xgrid = np.linspace(-0.15,1.15, 400)
-    ygrid = np.linspace(-0.15,1.15,400)
+    xgrid = np.linspace(-4.5,4.5, 400)
+    ygrid = np.linspace(-4.5, 4.5,400)
     xgrid, ygrid = np.meshgrid(xgrid,ygrid)
     gridcoords = np.vstack([xgrid.ravel(), ygrid.ravel()])
-    z = np.array(surface.run(gridcoords.T))
+    #z = np.array(surface.run(gridcoords.T))
+    z = np.array(surface(gridcoords.T))
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(1,1)
@@ -72,7 +73,8 @@ def contour(param_space, campaign, name):
     print(box_lengths)
     print(uppers)
     print(lowers)
-    box = mpl.patches.Rectangle((np.maximum(lowers[0],-0.5),np.maximum(lowers[1],-0.5)), np.minimum(2,box_lengths[0]), np.minimum(2,box_lengths[1]), linewidth=1, edgecolor = 'r', facecolor='none')
+    #box = mpl.patches.Rectangle((np.maximum(lowers[0],-0.5),np.maximum(lowers[1],-0.5)), np.minimum(2,box_lengths[0]), np.minimum(2,box_lengths[1]), linewidth=1, edgecolor = 'r', facecolor='none')
+    box = mpl.patches.Rectangle((lowers[0],lowers[1]), box_lengths[0], box_lengths[1], linewidth=1, edgecolor = 'r', facecolor='none')
     ax.add_patch(box)
 
     ax.scatter(campaign.params[:,0], campaign.params[:,1])
@@ -107,23 +109,24 @@ MODELS = [
 
 PLOTPATH: pathlib.Path = "/Users/maozer/VSCodeProjects/atlas/examples/dynamic_search_space/plots"
 NUM_RUNS = 1 #max_exp- the max number of experiments
-BUDGET = 60 #max_iter- the max number of evaluations per experiment
+BUDGET = 14 #max_iter- the max number of evaluations per experiment
 model_kind = "Dynamic"
 
 
 # -----------------------------
 # Instantiate surface
 # -----------------------------
-surface = Surface(kind='DiscreteAckley', param_dim=2)
+#surface = Surface(kind='DiscreteAckley', param_dim=2)
+surface = beale
 
 campaign = Campaign()
 param_space = ParameterSpace()
 # add 3 continuous Parameters
 param_0 = ParameterContinuous(
-    name="param_0", low=0.0, high=1.0
+    name="param_0", low=-4.5, high=4.5
 )
 param_1 = ParameterContinuous(
-    name="param_1", low=0.0, high=1.0
+    name="param_1", low=-4.5, high=4.5
 )
 param_space.add(param_0)
 param_space.add(param_1)
@@ -131,10 +134,10 @@ param_space.add(param_1)
 
 campaign.set_param_space(param_space)
 
-np.random.seed(4)
-box_len = 0.2
-bounds_all = np.array([[0, 1],
-                        [0, 1]])
+np.random.seed(42)
+box_len = 1.8
+bounds_all = np.array([[-4.5, 4.5],
+                        [-4.5, 4.5]])
 b_init_center = np.zeros((len(bounds_all), 1))
 for i in range(len(bounds_all)):
     b_init_center[i] = np.random.uniform(bounds_all[i][0]+box_len/2,
@@ -161,13 +164,14 @@ temp = temp.T
 X_init = list(temp.reshape((9, -1)))
 
 for x in X_init:
-    measurement = surface.run(x.reshape((1, x.shape[0])))
+    #measurement = surface.run(x.reshape((1, x.shape[0])))
+    measurement = surface(x.reshape((1, x.shape[0])))
     campaign.add_observation(x, measurement)
 
 planner = DynamicSSPlanner(
     iter_mul=BUDGET,
     epsilon=0.05,
-    goal="minimize",
+    goal="maximize",
     feas_strategy="naive-0",
     init_design_strategy="lhs",
     num_init_design=9,
@@ -183,8 +187,9 @@ planner._set_param_space(campaign.param_space)
 # start the optimization experiment
 iteration = 0
 # optimization loop
-contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot{0}.png"))
 while len(campaign.values) < BUDGET:
+
+    contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot{iteration+1}.png"))
 
     print(f"\nITERATION : {iteration}\n")
     samples = planner.recommend(campaign.observations)
@@ -192,13 +197,13 @@ while len(campaign.values) < BUDGET:
 
     for sample in samples:
         sample_arr = sample.to_array()
-        measurement = surface.run(
-            sample_arr.reshape((1, sample_arr.shape[0]))
-        )
+        # measurement = surface.run(
+        #     sample_arr.reshape((1, sample_arr.shape[0]))
+        # )
+        measurement = surface(sample_arr.reshape((1, sample_arr.shape[0])))
 
         print(f"func_param_space:{planner.func_param_space}")
         print(F"MEASUREMENT:{measurement}")
-        contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot{iteration+1}.png"))
         campaign.add_observation(sample_arr, measurement)
     iteration += 1
 

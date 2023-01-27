@@ -52,43 +52,34 @@ from atlas.optimizers.utils import (
     reverse_standardize,
 )
 
-def contour(param_space, campaign, name):
-    xgrid = np.linspace(-0.15,1.15, 400)
-    ygrid = np.linspace(-0.15,1.15,400)
-    xgrid, ygrid = np.meshgrid(xgrid,ygrid)
-    gridcoords = np.vstack([xgrid.ravel(), ygrid.ravel()])
-    z = np.array(surface.run(gridcoords.T))
-    import matplotlib as mpl
-    import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(1,1)
-    cp = ax.contourf(xgrid, ygrid, z.reshape(400,400))
-    fig.colorbar(cp)
-    ax.set_title('contour-plot')
-    uppers = param_space.param_uppers
-    lowers= param_space.param_lowers
-
-    box_lengths = uppers-lowers
-
-    print(box_lengths)
-    print(uppers)
-    print(lowers)
-    box = mpl.patches.Rectangle((np.maximum(lowers[0],-0.5),np.maximum(lowers[1],-0.5)), np.minimum(2,box_lengths[0]), np.minimum(2,box_lengths[1]), linewidth=1, edgecolor = 'r', facecolor='none')
-    ax.add_patch(box)
-
-    ax.scatter(campaign.params[:,0], campaign.params[:,1])
-    fig.savefig(name)
-
-
-def beale(X):
-        X = np.asarray(X)
-        if len(X.shape) == 1:
-            x1 = X[0]
-            x2 = X[1]
-        else:
-            x1 = X[:, 0]
-            x2 = X[:, 1]
-        fval = (1.5-x1+x1*x2)**2+(2.25-x1+x1*x2**2)**2+(2.625-x1+x1*x2**3)**2
-        return -fval
+def hm3(x):
+    # the hartmann3 function (3D)
+    # https://www.sfu.ca/~ssurjano/hart3.html
+    # parameters
+    alpha = np.array([1.0, 1.2, 3.0, 3.2])
+    A = np.array([[3.0, 10, 30], [0.1, 10, 35], [3.0, 10, 30], [0.1, 10, 35]])
+    P = 1e-4 * np.array(
+        [
+            [3689, 1170, 2673],
+            [4699, 4387, 7470],
+            [1091, 8732, 5547],
+            [381, 5743, 8828],
+        ]
+    )
+    x = x.reshape(x.shape[0], 1, -1)
+    B = x - P
+    B = B**2
+    exponent = A * B
+    exponent = np.einsum("ijk->ij", exponent)
+    C = np.exp(-exponent)
+    hm3 = -np.einsum("i, ki", alpha, C)
+    # normalize
+    #mean = -0.93
+    #std = 0.95
+    #hm3 = 1 / std * (hm3 - mean)
+    # maximize
+    # hm3 = -hm3
+    return hm3
 
 
 import pathlib
@@ -107,14 +98,15 @@ MODELS = [
 
 PLOTPATH: pathlib.Path = "/Users/maozer/VSCodeProjects/atlas/examples/dynamic_search_space/plots"
 NUM_RUNS = 1 #max_exp- the max number of experiments
-BUDGET = 60 #max_iter- the max number of evaluations per experiment
+BUDGET = 30 #max_iter- the max number of evaluations per experiment
 model_kind = "Dynamic"
 
 
 # -----------------------------
 # Instantiate surface
 # -----------------------------
-surface = Surface(kind='DiscreteAckley', param_dim=2)
+#surface = Surface(kind='DiscreteAckley', param_dim=2)
+surface = hm3
 
 campaign = Campaign()
 param_space = ParameterSpace()
@@ -125,16 +117,21 @@ param_0 = ParameterContinuous(
 param_1 = ParameterContinuous(
     name="param_1", low=0.0, high=1.0
 )
+param_2 = ParameterContinuous(
+    name="param_2", low=0.0, high=1.0
+)
 param_space.add(param_0)
 param_space.add(param_1)
+param_space.add(param_2)
 
 
 campaign.set_param_space(param_space)
 
-np.random.seed(4)
+np.random.seed(0)
 box_len = 0.2
 bounds_all = np.array([[0, 1],
-                        [0, 1]])
+                        [0, 1],
+                        [0 ,1]])
 b_init_center = np.zeros((len(bounds_all), 1))
 for i in range(len(bounds_all)):
     b_init_center[i] = np.random.uniform(bounds_all[i][0]+box_len/2,
@@ -146,13 +143,15 @@ bounds_user = np.asarray([b_init_lower.ravel(), b_init_upper.ravel()]).T
 bounds = bounds_user.copy()
 
 init_func_param_space = ParameterSpace()
-for i in range (2):
+for i in range (3):
     param = ParameterContinuous(
     name=f"param_{i}", 
     low=float(b_init_lower[i]), 
     high=float(b_init_upper[i])
     )
     init_func_param_space.add(param)
+
+
 
 # Generate and normalize input, ouput
 temp = [np.random.uniform(x[0], x[1], size=9) for x in bounds]
@@ -161,7 +160,7 @@ temp = temp.T
 X_init = list(temp.reshape((9, -1)))
 
 for x in X_init:
-    measurement = surface.run(x.reshape((1, x.shape[0])))
+    measurement = surface(x.reshape((1, x.shape[0])))
     campaign.add_observation(x, measurement)
 
 planner = DynamicSSPlanner(
@@ -183,24 +182,27 @@ planner._set_param_space(campaign.param_space)
 # start the optimization experiment
 iteration = 0
 # optimization loop
-contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot{0}.png"))
 while len(campaign.values) < BUDGET:
+    print("############################")
 
-    print(f"\nITERATION : {iteration}\n")
+    print(f"\nITERATION : {iteration+1}\n")
+
     samples = planner.recommend(campaign.observations)
     print(f"SAMPLES : {samples}")
 
     for sample in samples:
         sample_arr = sample.to_array()
-        measurement = surface.run(
-            sample_arr.reshape((1, sample_arr.shape[0]))
-        )
+        # measurement = surface.run(
+        #     sample_arr.reshape((1, sample_arr.shape[0]))
+        # )
+        measurement = surface(sample_arr.reshape((1, sample_arr.shape[0])))
 
         print(f"func_param_space:{planner.func_param_space}")
         print(F"MEASUREMENT:{measurement}")
-        contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot{iteration+1}.png"))
         campaign.add_observation(sample_arr, measurement)
+        
     iteration += 1
+    print("############################")
 
 
 print(f"run completed")

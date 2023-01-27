@@ -186,7 +186,7 @@ iteration = 0
 contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot{0}.png"))
 while len(campaign.values) < BUDGET:
 
-    print(f"\nITERATION : {iteration}\n")
+    #print(f"\nITERATION : {iteration}\n")
     samples = planner.recommend(campaign.observations)
     print(f"SAMPLES : {samples}")
 
