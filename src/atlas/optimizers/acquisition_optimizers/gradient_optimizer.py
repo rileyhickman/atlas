@@ -152,7 +152,7 @@ class GradientOptimizer(AcquisitionOptimizer):
         # (num_choices * d) torch.Tensor of the possible choices
         # need to generate fully cartesian product space of possible
         # choices
-        if self.feas_strategy == "fca":
+        if self.feas_strategy == "fca" and not self.use_reg_only:
             # if we have feasibilty constrained acquisition, prepare only
             # the feasible options as availble choices
             constraint_callable = self.fca_constraint
