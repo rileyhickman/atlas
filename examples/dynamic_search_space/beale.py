@@ -76,9 +76,9 @@ def contour(param_space, campaign, name):
     #box = mpl.patches.Rectangle((np.maximum(lowers[0],-0.5),np.maximum(lowers[1],-0.5)), np.minimum(2,box_lengths[0]), np.minimum(2,box_lengths[1]), linewidth=1, edgecolor = 'r', facecolor='none')
     box = mpl.patches.Rectangle((lowers[0],lowers[1]), box_lengths[0], box_lengths[1], linewidth=1, edgecolor = 'r', facecolor='none')
     ax.add_patch(box)
-
     ax.scatter(campaign.params[:,0], campaign.params[:,1])
     fig.savefig(name)
+
 
 
 def beale(X):
@@ -109,7 +109,7 @@ MODELS = [
 
 PLOTPATH: pathlib.Path = "/Users/maozer/VSCodeProjects/atlas/examples/dynamic_search_space/plots"
 NUM_RUNS = 1 #max_exp- the max number of experiments
-BUDGET = 14 #max_iter- the max number of evaluations per experiment
+BUDGET = 100 #max_iter- the max number of evaluations per experiment
 model_kind = "Dynamic"
 
 
@@ -185,15 +185,14 @@ planner._set_param_space(campaign.param_space)
 
 
 # start the optimization experiment
-iteration = 0
+iteration = 1
 # optimization loop
+contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot0.png"))
 while len(campaign.values) < BUDGET:
-
-    contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot{iteration+1}.png"))
 
     print(f"\nITERATION : {iteration}\n")
     samples = planner.recommend(campaign.observations)
-    print(f"SAMPLES : {samples}")
+    print(f"SAMPLES : {campaign.params}")
 
     for sample in samples:
         sample_arr = sample.to_array()
@@ -205,12 +204,14 @@ while len(campaign.values) < BUDGET:
         print(f"func_param_space:{planner.func_param_space}")
         print(F"MEASUREMENT:{measurement}")
         campaign.add_observation(sample_arr, measurement)
+
+        contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot{iteration}.png"))
     iteration += 1
 
 
 print(f"run completed")
 
-print(campaign.observations.get_values())
+print(f"FINAL VALUES: {campaign.observations.get_values()}")
 
 
 

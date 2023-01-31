@@ -37,8 +37,8 @@ from olympus import ParameterVector
 from olympus.campaigns import ParameterSpace
 from olympus.planners import AbstractPlanner, CustomPlanner, Planner
 from olympus.scalarizers import Scalarizer
-from atlas.optimizers.acquisition_optimizers.base_optimizer import (
-    AcquisitionOptimizer,
+from atlas.optimizers.acquisition_optimizers import (
+    GradientOptimizer, GeneticOptimizer
 )
 from atlas.optimizers.base import BasePlanner
 
@@ -57,6 +57,8 @@ from atlas.optimizers.utils import (
 )
 
 from atlas.optimizers.acqfs import (
+    LowerConfidenceBound,
+    FeasibilityAwareLCB,
     FeasibilityAwareEI,
     FeasibilityAwareGeneral,
     FeasibilityAwareQEI,
@@ -124,6 +126,7 @@ class DynamicSSPlanner(BasePlanner):
         #### below are parameters that are mostly not used
         feas_strategy: Optional[str] = "naive-0",
         feas_param: Optional[float] = 0.2,
+        use_min_filter:bool=True,
         vgp_iters: int = 2000,
         vgp_lr: float = 0.1,
         max_jitter: float = 1e-1,
@@ -226,8 +229,6 @@ class DynamicSSPlanner(BasePlanner):
                     self.train_y_scaled_reg,
                 ) = self.build_train_data()
 
-            
-    
             self.reg_model = self.build_train_regression_gp(self.train_x_scaled_reg, self.train_y_scaled_reg)
             self.cla_model, self.cla_likelihood = None, None
             f_best_argmin = torch.argmin(self.train_y_scaled_reg)
@@ -294,7 +295,20 @@ class DynamicSSPlanner(BasePlanner):
             acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled, b_n=b_n)
 
             if self.acquisition_type == "ucb":
-                self.acqf = FeasibilityAwareUCB(
+                self.ucbacqf = FeasibilityAwareUCB(
+                    self.reg_model,
+                    self.cla_model,
+                    self.cla_likelihood,
+                    self.func_param_space,
+                    f_best_scaled,
+                    self.feas_strategy,
+                    self.feas_param,
+                    infeas_ratio,
+                    acqf_min_max,
+                    beta=torch.tensor([b_n]),
+                )
+
+                self.lcbacqf = FeasibilityAwareLCB(
                     self.reg_model,
                     self.cla_model,
                     self.cla_likelihood,
@@ -311,56 +325,70 @@ class DynamicSSPlanner(BasePlanner):
                 raise NotImplementedError
 
 
-            acquisition_optimizer = AcquisitionOptimizer(
-                    self.acquisition_optimizer_kind,
+            if self.acquisition_optimizer_kind=='gradient':
+                    acquisition_optimizer = GradientOptimizer(
+                        self.params_obj,
+                        self.acquisition_type,
+                        self.ucbacqf,
+                        self.known_constraints,
+                        self.batch_size,
+                        self.feas_strategy,
+                        self.fca_constraint,
+                        self._params,
+                        timings_dict={},
+                        use_reg_only=False,
+
+                    )
+            elif self.acquisition_optimizer_kind == 'genetic':
+                acquisition_optimizer = GeneticOptimizer(
                     self.params_obj,
                     self.acquisition_type,
-                    self.acqf,
+                    self.ucbacqf,
                     self.known_constraints,
                     self.batch_size,
                     self.feas_strategy,
                     self.fca_constraint,
                     self._params,
+                    timings_dict={},
+                    use_reg_only=False,
+
                 )
             
+            acquisition_optimizer.param_space = self.func_param_space
+            
+            self.mins_x = acquisition_optimizer._mins_x
+            self.maxs_x = acquisition_optimizer._maxs_x
+
+
+
+            # print("Unnormalized x:")
+            # print(reverse_normalize(self.train_x_scaled_reg, self.mins_x, self.maxs_x))
+
+            # print("Unormalized x:")
+            # print(self.train_x_scaled_reg, self.mins_x, self.maxs_x)
+    
+            print("acq func max x value:")
             final_params = acquisition_optimizer.optimize()
-            x_max = torch.tensor([final_params[0].to_list()])
-           
-            max_acq = self.acqf(x_max).detach().numpy()
+            print(torch.tensor(final_params[0].to_list()))
 
-            y_acq = np.zeros(len(self.train_x_scaled_reg))
 
-            i = 0
+            x_max = forward_normalize(torch.tensor([final_params[0].to_list()]), self.mins_x, self.maxs_x)
+            print("normalized acq func max x value")
+            print(x_max)
+            final_params = acquisition_optimizer.optimize()
+            max_acq = self.ucbacqf(x_max).detach().numpy()
 
-            print("performing upper confidence bound analysis")
-
-            for point in self.train_x_scaled_reg:
-                point = torch.reshape(point, (1, self.input_dim))
-                result = self.acqf(point)
-                print(result)
-                y_acq[i] = result.detach().numpy().item()
-                i+= 1
-            print("Atlas")
-            print(y_acq)
-            result = self.acq_gp(self.train_x_scaled_reg, b_n)
-            print("homemade")
-            print(result)
-
-            sys.exit()
 
             # Compute the maximum regret
             X_init_temp = self.train_x_scaled_reg.numpy().tolist()
+            batch_size = len(X_init_temp)
+            #y_acq = np.zeros(len(self.train_x_scaled_reg))
+            #y_acq = self.ucbacqf(torch.reshape(self.train_x_scaled_reg, (batch_size,1,self.input_dim))).detach().numpy()
             X_init_temp.append(x_max.flatten().tolist())
-
-            print("performing LCB analysis")
-
-            Y_lcb_temp = self.acq_lcb(torch.from_numpy(np.asarray(X_init_temp)), b_n)
+            Y_lcb_temp = self.lcbacqf(torch.reshape(self.train_x_scaled_reg, (batch_size,1,self.input_dim))).detach().numpy()
             regret = max_acq - np.max(Y_lcb_temp)
             self.regret_iter.append(regret)
             print('Regret: {}'.format(regret))
-
-            print(Y_lcb_temp)
-            print(y_acq)
 
             # Check if regret < 0, redo the optimization, typically redo the optimization
             # with starting point in X_init_temp
@@ -370,9 +398,8 @@ class DynamicSSPlanner(BasePlanner):
                 print('Regret < 0, redo the optimization')
                 for i in range(n_search_X):
                     final_params = acquisition_optimizer.optimize()
-                    x_max_temp = torch.tensor([final_params[0].to_list()])
-                    max_acq_temp = self.acqf(x_max_temp).detach().numpy()
-                    y_acq = np.zeros(len(self.train_x_scaled_reg))
+                    x_max_temp = forward_normalize(torch.tensor([final_params[0].to_list()]), self.mins_x, self.maxs_x)
+                    max_acq_temp = self.ucbacqf(x_max_temp).detach().numpy()
 
                     # Store it if better than previous minimum(maximum).
                     if max_acq is None or max_acq_temp >= max_acq:
@@ -382,20 +409,20 @@ class DynamicSSPlanner(BasePlanner):
                     
                     # Recompute regret
                     regret = max_acq - np.max(Y_lcb_temp)
+                print("FINAL PARAMS:")
+                print(final_params)
                 print('Regret: {}'.format(regret))
             
-            sys.exit()
             
 
             # Expand if regret < epsilon or the first iteration
 
             if self.compute_expansion_trigger(regret, n_iter):
                 print('Expanding bounds')
-                Y = (self.train_y_scaled_reg.numpy()-np.mean(self.train_y_scaled_reg.numpy()))/(np.max(self.train_y_scaled_reg.numpy())-np.min(self.train_y_scaled_reg.numpy()))
+                #Y = (self.train_y_scaled_reg.numpy()-np.mean(self.train_y_scaled_reg.numpy()))/(np.max(self.train_y_scaled_reg.numpy())-np.min(self.train_y_scaled_reg.numpy()))
 
-                X, _ = self.build_train_data_custom()
-
-                print(f"X:{X}")
+                X = reverse_normalize(self.train_x_scaled_reg, self.mins_x, self.maxs_x)
+                X, Y = self.build_train_data_custom()
 
                 K = self.gram_matrix(X, 1, kernel_k2)
 
@@ -427,7 +454,7 @@ class DynamicSSPlanner(BasePlanner):
                 
 
                 if self.acquisition_type == "ucb":
-                    self.acqf = FeasibilityAwareUCB(
+                    self.ucbacqf = FeasibilityAwareUCB(
                         self.reg_model,
                         self.cla_model,
                         self.cla_likelihood,
@@ -441,29 +468,46 @@ class DynamicSSPlanner(BasePlanner):
                     )
                 else: raise NotImplementedError
 
-                acquisition_optimizer = AcquisitionOptimizer(
-                    self.acquisition_optimizer_kind,
-                    self.params_obj,
-                    self.acquisition_type,
-                    self.acqf,
-                    self.known_constraints,
-                    self.batch_size,
-                    self.feas_strategy,
-                    self.fca_constraint,
-                    self._params,
-                )
+                if self.acquisition_optimizer_kind=='gradient':
+                    acquisition_optimizer = GradientOptimizer(
+                        self.params_obj,
+                        self.acquisition_type,
+                        self.ucbacqf,
+                        self.known_constraints,
+                        self.batch_size,
+                        self.feas_strategy,
+                        self.fca_constraint,
+                        self._params,
+                        timings_dict={},
+                        use_reg_only=False,
+
+                    )
+                elif self.acquisition_optimizer_kind == 'genetic':
+                    acquisition_optimizer = GeneticOptimizer(
+                        self.params_obj,
+                        self.acquisition_type,
+                        self.ucbacqf,
+                        self.known_constraints,
+                        self.batch_size,
+                        self.feas_strategy,
+                        self.fca_constraint,
+                        self._params,
+                        timings_dict={},
+                        use_reg_only=False,
+
+                    )
+                acquisition_optimizer.param_space = self.func_param_space
             
                 final_params = acquisition_optimizer.optimize()
-                x_max = torch.tensor([final_params[0].to_list()])
-            
-                max_acq = self.acqf(x_max)
+                print("FINAL PARAMS:")
+                print(final_params)
+                x_max = forward_normalize(torch.tensor([final_params[0].to_list()]), self.mins_x, self.maxs_x)
+                max_acq = self.ucbacqf(x_max)
 
                 y_acq = np.zeros(len(self.train_x_scaled_reg))
 
-
-
                 # Save some parameters of the bound
-                X_init_bound = self.train_x_scaled_reg.numpy()
+                X_init_bound = X
                 Y_bound = np.copy(Y)
                 lengthscale_bound = lengthscale = np.float64(self.reg_model.covar_module.base_kernel.raw_lengthscale.item())
                 scale_l_bound = scale_l
@@ -475,16 +519,19 @@ class DynamicSSPlanner(BasePlanner):
 
                 print('Re-optimize within smaller spheres')
 
-                final_params = self.argmax_infinity_reoptimize( 
-                    final_params, 
-                    b_n, 
-                    Y_bound, 
-                    X_init_bound, 
-                    bound_len, 
-                    bounds, 
-                    f_best_scaled, 
-                    infeas_ratio, 
-                    acqf_min_max)
+                final_params = self.argmax_infinity_reoptimize(
+                                final_params, 
+                                b_n, 
+                                Y_bound, 
+                                X_init_bound, 
+                                bound_len, 
+                                self.func_param_space, 
+                                f_best_scaled, 
+                                infeas_ratio, 
+                                acqf_min_max
+                                )
+                print("FINAL PARAMS:")
+                print(final_params)
         
         self.n_iter_i +=1
             
@@ -675,7 +722,7 @@ class DynamicSSPlanner(BasePlanner):
     
         samples, _ = propose_randomly(
             num_samples,
-            self.param_space,
+            self.func_param_space,
             self.has_descriptors,
         )
 
@@ -718,31 +765,6 @@ class DynamicSSPlanner(BasePlanner):
 
         return
     
-    
-    def acq_lcb(self, x, b_n):
-        i = 0
-
-        _len = x.size(dim=0)
-        y_mean = np.zeros(_len)
-        y_std = np.zeros(_len)
-        for point in x:
-            print(f"point{point}")
-            point = torch.reshape(point, (1, self.input_dim))
-            f_preds = self.reg_model(point)
-            mean, std = f_preds.mean.detach().numpy(), f_preds.variance.detach().numpy()
-            y_mean[i] = mean
-            y_std[i] = np.sqrt(std)
-            i+= 1
-
-        return (-y_mean - b_n*y_std)
-    
-    def acq_gp(self, x, b_n):
-
-        f_preds = self.reg_model(x)
-        y_mean, y_std = f_preds.mean.detach().numpy(), f_preds.variance.detach().numpy()
-
-        return (-y_mean.ravel() + b_n*np.sqrt(y_std).ravel())
-    
     def gram_matrix(self, X, k1, k2):
         dim = len(X)
         K = np.zeros((dim, dim))
@@ -765,11 +787,15 @@ class DynamicSSPlanner(BasePlanner):
         acqf_min_max
         ):
 
-        #print('Re-optimize within smaller spheres')
+        print('Re-optimize within smaller spheres')
         indices_max = np.argsort(Y_bound)[::-1]
         
         # Set a minimal number of local optimizations
         n_search = np.min([5, len(indices_max)])
+
+        raw_outputscale =self.reg_model.covar_module.raw_outputscale
+        constraint = self.reg_model.covar_module.raw_outputscale_constraint
+        kernel_k1 = constraint.transform(raw_outputscale).item()
         for i in range(n_search):
             X0 = X_init_bound[indices_max[i]]
             bounds_new = np.asarray((X0 - bound_len,
@@ -788,8 +814,9 @@ class DynamicSSPlanner(BasePlanner):
                     )
                 )
             
+            
             if self.acquisition_type == "ucb":
-                self.acqf = FeasibilityAwareUCB(
+                self.ucbacqf = FeasibilityAwareUCB(
                     self.reg_model,
                     self.cla_model,
                     self.cla_likelihood,
@@ -803,25 +830,40 @@ class DynamicSSPlanner(BasePlanner):
                 )
             else: raise NotImplementedError
 
-            acquisition_optimizer = AcquisitionOptimizer(
-                self.acquisition_optimizer_kind,
-                self.params_obj,
-                self.acquisition_type,
-                self.acqf,
-                self.known_constraints,
-                self.batch_size,
-                self.feas_strategy,
-                self.fca_constraint,
-                self._params,
-            )
+            if self.acquisition_optimizer_kind=='gradient':
+                    acquisition_optimizer = GradientOptimizer(
+                        self.params_obj,
+                        self.acquisition_type,
+                        self.ucbacqf,
+                        self.known_constraints,
+                        self.batch_size,
+                        self.feas_strategy,
+                        self.fca_constraint,
+                        self._params,
+                        timings_dict={},
+                        use_reg_only=False,
+
+                    )
+            elif self.acquisition_optimizer_kind == 'genetic':
+                acquisition_optimizer = GeneticOptimizer(
+                    self.params_obj,
+                    self.acquisition_type,
+                    self.ucbacqf,
+                    self.known_constraints,
+                    self.batch_size,
+                    self.feas_strategy,
+                    self.fca_constraint,
+                    self._params,
+                    timings_dict={},
+                    use_reg_only=False,
+
+                )
+            acquisition_optimizer.param_space = self.func_param_space
 
             return_params_local = acquisition_optimizer.optimize()
-            x_max_local = torch.tensor([return_params_local[0].to_list()])
-            max_acq_local = self.acqf(x_max_local).detach().numpy()
+            x_max_local = forward_normalize(torch.tensor([return_params_local[0].to_list()]), self.mins_x, self.maxs_x)
+            max_acq_local = self.ucbacqf(x_max_local).detach().numpy()
             
-            raw_outputscale =self.reg_model.covar_module.raw_outputscale
-            constraint = self.reg_model.covar_module.raw_outputscale_constraint
-            kernel_k1 = constraint.transform(raw_outputscale).item()
             max_inf = b_n*np.sqrt(kernel_k1)
         
             if np.abs(max_acq_local-max_inf) <= self.epsilon:
@@ -830,8 +872,7 @@ class DynamicSSPlanner(BasePlanner):
                 
                 return final_params
         return final_params
-    
-        
+          
     def build_train_data_custom(self) -> Tuple[torch.Tensor, torch.tensor]:
         """build the training dataset at each iteration"""
         if self.is_moo:

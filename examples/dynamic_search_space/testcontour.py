@@ -69,27 +69,11 @@ def contour(param_space, campaign, name):
 
     box_lengths = uppers-lowers
 
-    print(box_lengths)
-    print(uppers)
-    print(lowers)
     box = mpl.patches.Rectangle((np.maximum(lowers[0],-0.5),np.maximum(lowers[1],-0.5)), np.minimum(2,box_lengths[0]), np.minimum(2,box_lengths[1]), linewidth=1, edgecolor = 'r', facecolor='none')
     ax.add_patch(box)
 
     ax.scatter(campaign.params[:,0], campaign.params[:,1])
     fig.savefig(name)
-
-
-def beale(X):
-        X = np.asarray(X)
-        if len(X.shape) == 1:
-            x1 = X[0]
-            x2 = X[1]
-        else:
-            x1 = X[:, 0]
-            x2 = X[:, 1]
-        fval = (1.5-x1+x1*x2)**2+(2.25-x1+x1*x2**2)**2+(2.625-x1+x1*x2**3)**2
-        return -fval
-
 
 import pathlib
 from olympus import Surface
@@ -105,9 +89,9 @@ MODELS = [
     "Dynamic"
 ]
 
-PLOTPATH: pathlib.Path = "/Users/maozer/VSCodeProjects/atlas/examples/dynamic_search_space/plots"
+PLOTPATH: pathlib.Path = "/Users/maozer/VSCodeProjects/atlas/examples/dynamic_search_space/test_plots"
 NUM_RUNS = 1 #max_exp- the max number of experiments
-BUDGET = 60 #max_iter- the max number of evaluations per experiment
+BUDGET = 1000 #max_iter- the max number of evaluations per experiment
 model_kind = "Dynamic"
 
 
@@ -131,7 +115,7 @@ param_space.add(param_1)
 
 campaign.set_param_space(param_space)
 
-np.random.seed(4)
+np.random.seed(6)
 box_len = 0.2
 bounds_all = np.array([[0, 1],
                         [0, 1]])
@@ -181,10 +165,12 @@ planner._set_param_space(campaign.param_space)
 
 
 # start the optimization experiment
-iteration = 0
+iteration = 1
 # optimization loop
-contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot{0}.png"))
+contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot_0.png"))
 while len(campaign.values) < BUDGET:
+    print("########################")
+    print(f"ITERATION {iteration}")
 
     #print(f"\nITERATION : {iteration}\n")
     samples = planner.recommend(campaign.observations)
@@ -198,8 +184,9 @@ while len(campaign.values) < BUDGET:
 
         print(f"func_param_space:{planner.func_param_space}")
         print(F"MEASUREMENT:{measurement}")
-        contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot{iteration+1}.png"))
         campaign.add_observation(sample_arr, measurement)
+        contour(planner.func_param_space, campaign, os.path.join(PLOTPATH,f"plot_{iteration}.png"))
+    print("########################")
     iteration += 1
 
 
