@@ -102,6 +102,7 @@ class GradientOptimizer(AcquisitionOptimizer):
             _
         ) = self.gen_initial_conditions()
 
+
         results, _ = optimize_acqf(
             acq_function=self.acqf,
             bounds=self.bounds,
@@ -121,7 +122,6 @@ class GradientOptimizer(AcquisitionOptimizer):
             self.param_space,
             self.has_descriptors,
         )
-
         # TODO: add in fca constraint callable here...
         constraint_callable = None
 

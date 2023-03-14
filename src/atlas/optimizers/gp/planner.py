@@ -96,6 +96,7 @@ class BoTorchPlanner(BasePlanner):
         feas_param: Optional[float] = 0.2,
         use_min_filter: bool = True,
         batch_size: int = 1,
+        batched_strategy: str = 'sequential', # sequential or greedy
         random_seed: Optional[int] = None,
         use_descriptors: bool = False,
         num_init_design: int = 5,
@@ -344,10 +345,14 @@ class BoTorchPlanner(BasePlanner):
                         use_reg_only=use_reg_only,
                     )
                 elif self.batch_size > 1:
-                    if self.problem_type == "fully_continuous":
+                    #if self.problem_type == "fully_continuous":
+                    if self.batched_strategy=='sequential':
                         acqf_object = FeasibilityAwareQEI
-                    else:
+                    elif self.batched_strategy=='greedy':
                         acqf_object = FeasibilityAwareEI
+                    else:
+                        msg = f'Batched acqf opt strategy {self.batched_strategy} not found. Choose from "sequential" or "greedy".'
+                        Logger.log(msg, 'FATAL')
                     self.acqf = acqf_object(
                         self.reg_model,
                         self.cla_model,

@@ -12,11 +12,18 @@ from botorch.acquisition import (
 	AnalyticAcquisitionFunction,
 	ExpectedImprovement,
 	UpperConfidenceBound,
+
 )
 
 from botorch.acquisition.monte_carlo import (
 	qExpectedImprovement,
 	qNoisyExpectedImprovement,
+)
+from botorch.acquisition.multi_objective.monte_carlo import (
+	qNoisyExpectedHypervolumeImprovement,
+)
+from botorch.acquisition.multi_objective.objective import (
+	IdentityMCMultiOutputObjective
 )
 
 from atlas import Logger
@@ -93,8 +100,6 @@ class FeasibilityAwareAcquisition:
 		"""
 		acqf = super().forward(X)
 		return acqf
-
-
 
 
 class VarianceBased(AcquisitionFunction):
@@ -600,6 +605,62 @@ class FeasibilityAwareLCB(LowerConfidenceBound, FeasibilityAwareAcquisition):
 		return self.compute_combined_acqf(acqf, X)
 
 
+class FeasibilityAwareqNEHVI(qNoisyExpectedHypervolumeImprovement, FeasibilityAwareAcquisition):
+	def __init__(
+		self,
+		reg_model,
+		cla_model,
+		cla_likelihood,
+		param_space,
+		feas_strategy,
+		feas_param,
+		infeas_ratio,
+		acqf_min_max,
+		# qNEHVI-specific parameters ----
+		ref_point, 
+		sampler,
+		X_baseline, 
+		prune_baseline=False,
+		#--------------------------------
+		use_p_feas_only=False,
+		use_reg_only=False,
+		use_min_filter=True,
+		objective=IdentityMCMultiOutputObjective(),
+		**kwargs,
+	) -> None:
+		super().__init__(
+				model=reg_model, 
+				ref_point=ref_point, # reference point --> make this the worst measured objective value in each dim (list)
+				X_baseline=X_baseline,  # normalized x values (observed parameters)
+				prune_baseline=prune_baseline, # prune baseline points that have estimated zero probability
+				sampler=sampler,  # instance of SobolQMCNormalSampler for continuous variables
+				objective=objective,
+				# **kwargs,
+			)
+		self.reg_model = reg_model
+		self.cla_model = cla_model
+		self.cla_likelihood = cla_likelihood
+		self.param_space = param_space
+		self.feas_strategy = feas_strategy
+		self.feas_param = feas_param
+		self.feas_strategy = feas_strategy
+		self.feas_param = feas_param
+		self.infeas_ratio = infeas_ratio
+		self.acqf_min_max = acqf_min_max
+		self.use_p_feas_only = use_p_feas_only
+		self.use_reg_only = use_reg_only
+		self.use_min_filter = use_min_filter
+		self.objective = objective
+		# set the p_feas postprocessing step
+		self.set_p_feas_postprocess()
+
+
+	def forward(self, X):
+		acqf = -super().forward(X) # why do we seem to need negative sign??
+		return self.compute_combined_acqf(acqf, X)
+
+
+
 
 
 def get_batch_initial_conditions(
@@ -631,15 +692,18 @@ def get_batch_initial_conditions(
 	"""
 	# take 20*num_restarts points randomly and evaluate the constraint function on all of
 	# them, if we have enough, proceed, if not proceed to sequential rejection sampling
-	num_raw_samples = 20 * num_restarts
+	num_raw_samples = 20 * num_restarts 
 	raw_samples, raw_proposals = propose_randomly(
-		num_raw_samples, param_space, has_descriptors
+		num_proposals=num_raw_samples*batch_size, 
+		param_space=param_space, 
+		has_descriptors=has_descriptors,
 	)
 	# forward normalize the randomly generated samples
 	raw_samples = forward_normalize(raw_samples, mins_x, maxs_x)
 
+
 	raw_samples = torch.tensor(raw_samples).view(
-		raw_samples.shape[0], batch_size, raw_samples.shape[1]
+		raw_samples.shape[0]//batch_size, batch_size, raw_samples.shape[1]
 	)
 
 	if constraint_callable == []:

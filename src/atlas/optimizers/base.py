@@ -72,6 +72,7 @@ class BasePlanner(CustomPlanner):
         feas_param: Optional[float] = 0.2,
         use_min_filter: bool = True,
         batch_size: int = 1,
+        batched_strategy: str = 'sequential', # sequential or greedy
         random_seed: Optional[int] = None,
         use_descriptors: bool = False,
         num_init_design: int = 5,
@@ -548,8 +549,6 @@ class BasePlanner(CustomPlanner):
             pred_mu, pred_sigma = pred_mu.numpy(), pred_sigma.numpy()
 
         return pred_mu, pred_sigma
-
-
 
 
     def cla_surrogate(
