@@ -89,7 +89,7 @@ MODELS = [
     "Dynamic"
 ]
 
-PLOTPATH: pathlib.Path = "/Users/maozer/VSCodeProjects/atlas/examples/dynamic_search_space/test_plots"
+PLOTPATH: pathlib.Path = "/Users/maozer/VSCodeProjects/atlas/examples/dynamic_search_space/Levy_plots"
 NUM_RUNS = 1 #max_exp- the max number of experiments
 BUDGET = 1000 #max_iter- the max number of evaluations per experiment
 model_kind = "Dynamic"
@@ -98,7 +98,7 @@ model_kind = "Dynamic"
 # -----------------------------
 # Instantiate surface
 # -----------------------------
-surface = Surface(kind='DiscreteAckley', param_dim=2)
+surface = Surface(kind='Levy', param_dim=2)
 
 campaign = Campaign()
 param_space = ParameterSpace()
@@ -115,7 +115,7 @@ param_space.add(param_1)
 
 campaign.set_param_space(param_space)
 
-np.random.seed(6)
+np.random.seed(594)
 box_len = 0.2
 bounds_all = np.array([[0, 1],
                         [0, 1]])
