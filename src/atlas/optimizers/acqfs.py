@@ -662,7 +662,6 @@ class FeasibilityAwareqNEHVI(qNoisyExpectedHypervolumeImprovement, FeasibilityAw
 
 
 
-
 def get_batch_initial_conditions(
 	num_restarts,
 	batch_size,
@@ -806,7 +805,8 @@ def sample_around_x(raw_samples, constraint_callable):
 def create_available_options(
 	param_space,
 	params,
-	constraint_callable,
+	fca_constraint_callable,
+	known_constraint_callables,
 	normalize,
 	mins_x,
 	maxs_x,
@@ -822,7 +822,8 @@ def create_available_options(
 	Args:
 			param_space (obj): Olympus parameter space object
 			params (list): parameters from the current Campaign
-			constraint_callable (callable):
+			fca_constraint_callable (Callable): FCA constraint callable
+			known_constraint_callables (List[Callable]): list of known constraints
 			mins_x (np.array): minimum values of each parameter space dimension
 			maxs_x (np.array): maximum values of each parameter
 	"""
@@ -871,44 +872,60 @@ def create_available_options(
 		current_avail_feat_unconst = np.array(current_avail_feat)
 		current_avail_cat_unconst = np.array(current_avail_cat)
 
-		# forward normalize the options before evaluating the c
+		# # check known constraints not associated with FCA (if any)
+		if known_constraint_callables is not []:
+			# known constraints
+			kc_results = []
+			for cat_unconst in current_avail_cat_unconst:
+				if all([kc(cat_unconst) for kc in known_constraint_callables]):
+					# feasible
+					kc_results.append(True)
+				else:
+					kc_results.append(False)
+			feas_mask = np.where(kc_results)[0]
+			current_avail_feat_kc = current_avail_feat_unconst[feas_mask]
+			current_avail_cat_kc  = current_avail_cat_unconst[feas_mask]
+		else:
+			current_avail_feat_kc = current_avail_feat_unconst
+			current_avail_cat_kc = current_avail_cat_unconst
+
+
+		# forward normalize the options before evaluating the fca constraint 
 		if normalize:
-			current_avail_feat_unconst = forward_normalize(
-				current_avail_feat_unconst, mins_x, maxs_x
+			current_avail_feat_kc = forward_normalize(
+				current_avail_feat_kc, mins_x, maxs_x
 			)
 
-		current_avail_feat_unconst = torch.tensor(current_avail_feat_unconst)
+		current_avail_feat_kc = torch.tensor(current_avail_feat_kc)
+
 
 		# remove options which are infeasible given the feasibility surrogate model
-		# and the threshold
-		if constraint_callable is not None:
+		# and the threshold 
+		if fca_constraint_callable is not None:
 			# FCA approach, apply feasibility constraint
-			constraint_input = current_avail_feat_unconst.view(
-				current_avail_feat_unconst.shape[0],
+			constraint_input = current_avail_feat_kc.view(
+				current_avail_feat_kc.shape[0],
 				1,
-				current_avail_feat_unconst.shape[1],
+				current_avail_feat_kc.shape[1],
 			)
-			constraint_vals = constraint_callable(constraint_input)
+			constraint_vals = fca_constraint_callable(constraint_input)
 			feas_mask = torch.where(constraint_vals >= 0.0)[0]
 			print(
-				f"{feas_mask.shape[0]}/{current_avail_feat_unconst.shape[0]} options are feasible"
+				f"{feas_mask.shape[0]}/{current_avail_feat.shape[0]} options are feasible"
 			)
 			if feas_mask.shape[0] == 0:
 				msg = "No feasible samples after FCA constraint, resorting back to full space"
 				Logger.log(msg, "WARNING")
 				# if we have zero feasible samples
 				# resort back to the full set of unobserved options
-				current_avail_feat = current_avail_feat_unconst
-				current_avail_cat = current_avail_cat_unconst
+				current_avail_feat = current_avail_feat_kc
+				current_avail_cat = current_avail_cat_kc
 			else:
-				current_avail_feat = current_avail_feat_unconst[feas_mask]
-				current_avail_cat = current_avail_cat_unconst[
-					feas_mask.detach().numpy()
-				]
-
+				current_avail_feat = current_avail_feat_kc[feas_mask]
+				current_avail_cat = current_avail_cat_kc[feas_mask.detach().numpy()]
 		else:
-			current_avail_feat = current_avail_feat_unconst
-			current_avail_cat = current_avail_cat_unconst
+			current_avail_feat = current_avail_feat_kc
+			current_avail_cat = current_avail_cat_kc
 
 		return current_avail_feat, current_avail_cat
 

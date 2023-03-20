@@ -113,7 +113,6 @@ class GradientOptimizer(AcquisitionOptimizer):
             batch_initial_conditions=batch_initial_conditions,
         )
 
-
         return results
 
     def _optimize_mixed(self):
@@ -155,14 +154,16 @@ class GradientOptimizer(AcquisitionOptimizer):
         if self.feas_strategy == "fca" and not self.use_reg_only:
             # if we have feasibilty constrained acquisition, prepare only
             # the feasible options as availble choices
-            constraint_callable = self.fca_constraint
+            fca_constraint_callable = self.fca_constraint
         else:
-            constraint_callable = None
+            fca_constraint_callable = None
+        
 
         self.choices_feat, self.choices_cat = create_available_options(
             self.param_space,
             self._params,
-            constraint_callable,
+            fca_constraint_callable=fca_constraint_callable,
+            known_constraint_callables=self.known_constraints,
             normalize=self.has_descriptors,
             has_descriptors=self.has_descriptors,
             mins_x=self._mins_x,
