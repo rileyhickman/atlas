@@ -193,7 +193,6 @@ def run_discrete(
     assert len(campaign.observations.get_values()) == BUDGET
 
 
-
 def run_categorical(
     init_design_strategy, batch_size, use_descriptors, num_init_design=5
 ):

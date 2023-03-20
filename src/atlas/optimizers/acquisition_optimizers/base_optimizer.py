@@ -124,8 +124,6 @@ class AcquisitionOptimizer:
             nonlinear_inequality_constraints.append(self.known_constraints)
             return_nonlinear_inequality_constraints.append(self.known_constraints)
 
-        print(nonlinear_inequality_constraints)
-        quit()
 
         if self.feas_strategy == 'fca' and not self.use_reg_only:
 
