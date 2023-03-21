@@ -383,7 +383,6 @@ class BasePlanner(CustomPlanner):
 
         return model, likelihood
 
-
     def build_train_data(self) -> Tuple[torch.Tensor, torch.tensor]:
         """build the training dataset at each iteration"""
         if self.is_moo:
@@ -548,7 +547,6 @@ class BasePlanner(CustomPlanner):
 
         return pred_mu, pred_sigma
 
-
     def cla_surrogate(
         self,
         X: torch.Tensor,
@@ -664,7 +662,6 @@ class BasePlanner(CustomPlanner):
 
         return acqf_vals
 
-
     def _tell(self, observations: olympus.campaigns.observations.Observations):
         """unpack the current observations from Olympus
         Args:
@@ -752,14 +749,15 @@ class BasePlanner(CustomPlanner):
             
             # check to see if the recommended parameters satisfy the 
             # known constraints, if there are any
-            if self.known_constraints != []:
+            if self.known_constraints is not None:
                 # we have some known constraints 
                 kc_res = [kc(rec_params.to_array()) for kc in self.known_constraints]
                 if all(kc_res):
                     return_params.append(rec_params)
                     self.num_init_design_completed += 1  # batch_size always 1 for init design planner
             else:
-                pass
+                return_params.append(rec_params)
+                self.num_init_design_completed += 1
 
             self.num_init_design_attempted += 1
 

@@ -827,6 +827,7 @@ def create_available_options(
 			mins_x (np.array): minimum values of each parameter space dimension
 			maxs_x (np.array): maximum values of each parameter
 	"""
+
 	# make sure params are proper data type
 	real_params = []
 	for param in params:
@@ -873,7 +874,7 @@ def create_available_options(
 		current_avail_cat_unconst = np.array(current_avail_cat)
 
 		# # check known constraints not associated with FCA (if any)
-		if known_constraint_callables is not []:
+		if known_constraint_callables is not None:
 			# known constraints
 			kc_results = []
 			for cat_unconst in current_avail_cat_unconst:

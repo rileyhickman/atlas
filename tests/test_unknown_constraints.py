@@ -15,6 +15,7 @@ from olympus.scalarizers import Scalarizer
 from olympus.surfaces import Surface
 
 from atlas.optimizers.gp.planner import BoTorchPlanner
+from atlas.optimizers.qnehvi.planner import qNEHVIPlanner
 
 CONT = {
     "init_design_strategy": [
@@ -176,8 +177,110 @@ def run_categorical(
     assert len(campaign.observations.get_values()) == BUDGET
 
 
+
+def run_qnehvi_mixed_cat_disc(
+    init_design_strategy,
+    batch_size,
+    feas_strategy_param,
+    use_descriptors,
+    num_init_design=5,
+):
+
+    def surface(x):
+        if x["param_0"] == "x0":
+            factor = 0.1
+        elif x["param_0"] == "x1":
+            factor = 1.0
+        elif x["param_0"] == "x2":
+            factor = 10.0
+
+        return np.array([
+            # objective 1
+            np.sin(8.0 * x["param_1"])
+            - 2.0 * np.cos(6.0 * x["param_1"])
+            + np.exp(-2.0 * x["param_2"])
+            + 2.0 * (1.0 / factor), 
+            # objective 2
+             np.sin(8.0 * x["param_1"])
+            + 2.0 * np.cos(6.0 * x["param_1"])
+            - np.exp(-5.0 * x["param_2"])
+            + 2.0 * (2.0 / factor), 
+        ])
+    
+    split = feas_strategy_param.split("_")
+    feas_strategy, feas_param = split[0], float(split[1])
+
+    if use_descriptors:
+        desc_param_0 = [[float(i), float(i)] for i in range(3)]
+    else:
+        desc_param_0 = [None for i in range(3)]
+
+    param_space = ParameterSpace()
+    param_0 = ParameterCategorical(
+        name="param_0",
+        options=["x0", "x1", "x2"],
+        descriptors=desc_param_0,
+    )
+    param_1 = ParameterDiscrete(
+        name="param_1",
+        options=[0.0, 0.25, 0.5, 0.75, 1.0],
+    )
+    param_2 = ParameterDiscrete(
+        name="param_2",
+        options=[0.0, 0.25, 0.5, 0.75, 1.0],
+    )
+    param_space.add(param_0)
+    param_space.add(param_1)
+    param_space.add(param_2)
+
+    value_space = ParameterSpace()
+    value_space.add(ParameterContinuous(name='obj0'))
+    value_space.add(ParameterContinuous(name='obj1'))
+
+
+    planner = qNEHVIPlanner(
+        goal='minimize', 
+        feas_strategy=feas_strategy,
+        feas_param=feas_param,
+        batch_size=batch_size,
+        use_descriptors=use_descriptors,
+        init_design_strategy=init_design_strategy,
+        num_init_design=num_init_design,
+        acquisition_optimizer_kind='gradient',
+        is_moo=True,
+        value_space=value_space,
+        goals = ['min', 'max']
+    )
+
+
+    planner.set_param_space(param_space)
+
+    campaign = Campaign()
+    campaign.set_param_space(param_space)
+    campaign.set_value_space(value_space)
+
+    BUDGET = num_init_design + batch_size * 4 
+
+    while len(campaign.observations.get_values()) < BUDGET:
+
+        samples = planner.recommend(campaign.observations)
+        for sample in samples:
+            if np.random.uniform() > 0.35:
+                measurement = surface(sample)
+            else:
+                measurement = np.array([np.nan, np.nan])
+            campaign.add_observation(sample, measurement)
+    
+
+    assert len(campaign.observations.get_params()) == BUDGET
+    assert len(campaign.observations.get_values()) == BUDGET
+
+
+
+
 if __name__ == "__main__":
 
     # run_continuous('random', 1, 'fwa-0', False)
     # run_continuous('random', 1, 'naive-0_0', False)
-    pass
+    
+    run_qnehvi_mixed_cat_disc('random', 1, 'naive-0_0', False)

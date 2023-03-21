@@ -289,12 +289,13 @@ class qNEHVIPlanner(BasePlanner):
         """ query the planner for a batch of new parameter points to measure
         """
         # if we have all nan values, just keep randomly sampling
+
         if np.logical_or(
             len(self._values) < self.num_init_design,
             np.all(np.isnan(self._values)),
         ):
             return_params = self.initial_design()
-        
+   
         else:
             # timings dictionary for analysis
             self.timings_dict = {}
@@ -353,9 +354,24 @@ class qNEHVIPlanner(BasePlanner):
                             use_p_feas_only = True
 
                     elif self.feas_strategy == "naive-0":
+                        
+                        # print('train x scaled cla : ', self.train_x_scaled_cla.shape)
+                        # print('train y scaled cla : ', self.train_y_scaled_cla.shape)
+
+                        # print('train x scaled reg : ', self.train_x_scaled_reg.shape)
+                        # print('train y scaled reg : ', self.train_y_scaled_reg.shape)
+
+                    
+
                         new_train_y_scaled_reg = deepcopy(
                             self.train_y_scaled_cla
                         ).double()
+
+                        # TODO: here, the worst objective actually must be computed using 
+                        # hypervolume -> assume all minimization objectives at this point
+                        # use reference point as worst value for each objecitve observed
+                        # ref_point = self.get_ref_point()
+
 
                         worst_obj = torch.amax(
                             self.train_y_scaled_reg[
