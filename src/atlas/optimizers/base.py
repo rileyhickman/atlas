@@ -235,21 +235,19 @@ class BasePlanner(CustomPlanner):
             self.golem = None
 
     def build_train_classification_gp(
-        self, train_x: torch.Tensor, train_y: torch.Tensor
-    ) -> Tuple[
-        gpytorch.models.ApproximateGP, gpytorch.likelihoods.BernoulliLikelihood
-    ]:
-        """build the GP classification model and likelihood
-        and train the model
-        """
-        model = ClassificationGPMatern(train_x, train_y)
-        likelihood = gpytorch.likelihoods.BernoulliLikelihood()
+            self, train_x: torch.Tensor, train_y: torch.Tensor
+        ) -> Tuple[
+            gpytorch.models.ApproximateGP, gpytorch.likelihoods.BernoulliLikelihood
+        ]:
+            """build the GP classification model and likelihood
+            and train the model
+            """
+            model = ClassificationGPMatern(train_x, train_y)
+            likelihood = gpytorch.likelihoods.BernoulliLikelihood()
 
-        model, likelihood = self.train_vgp(model, likelihood, train_x, train_y)
+            model, likelihood = self.train_vgp(model, likelihood, train_x, train_y)
 
-        return model, likelihood
-
-
+            return model, likelihood
 
     def train_vgp(
         self,
@@ -667,7 +665,6 @@ class BasePlanner(CustomPlanner):
         return acqf_vals
 
 
-
     def _tell(self, observations: olympus.campaigns.observations.Observations):
         """unpack the current observations from Olympus
         Args:
@@ -727,3 +724,43 @@ class BasePlanner(CustomPlanner):
 
 
         return constraint_val
+
+    def initial_design(self) -> List[ParameterVector]:
+        ''' Acquire initial design samples using one of several supported strategues
+        '''
+        Logger.log(
+            f'Selecting {self.num_init_design} inital design points using {self.init_design_strategy}',
+            'INFO', 
+        )
+        # set parameter space for the initial design planner
+        self.init_design_planner.set_param_space(self.param_space)
+        return_params = []
+        self.num_init_design_attempted = 0
+        while self.num_init_design_completed < self.num_init_design:
+            # TODO: this is pretty sloppy - consider standardizing this
+            if self.init_design_strategy == "random":
+                self.init_design_planner._tell(iteration=self.num_init_design_attempted)
+            else:
+                self.init_design_planner.tell()
+            rec_params = self.init_design_planner.ask()
+            if isinstance(rec_params, list):
+                rec_params = rec_params[0]
+            elif isinstance(rec_params, ParameterVector):
+                pass
+            else:
+                raise TypeError
+            
+            # check to see if the recommended parameters satisfy the 
+            # known constraints, if there are any
+            if self.known_constraints != []:
+                # we have some known constraints 
+                kc_res = [kc(rec_params.to_array()) for kc in self.known_constraints]
+                if all(kc_res):
+                    return_params.append(rec_params)
+                    self.num_init_design_completed += 1  # batch_size always 1 for init design planner
+            else:
+                pass
+
+            self.num_init_design_attempted += 1
+
+        return return_params

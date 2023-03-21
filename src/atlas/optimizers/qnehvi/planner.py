@@ -293,29 +293,7 @@ class qNEHVIPlanner(BasePlanner):
             len(self._values) < self.num_init_design,
             np.all(np.isnan(self._values)),
         ):
-            # set parameter space for the initial design planner
-            self.init_design_planner.set_param_space(self.param_space)
-
-            # sample using initial design strategy (with same batch size)
-            return_params = []
-            for _ in range(self.batch_size):
-                # TODO: this is pretty sloppy - consider standardizing this
-                if self.init_design_strategy == "random":
-                    self.init_design_planner._tell(
-                        iteration=self.num_init_design_completed
-                    )
-                else:
-                    self.init_design_planner.tell()
-                rec_params = self.init_design_planner.ask()
-                if isinstance(rec_params, list):
-                    return_params.append(rec_params[0])
-                elif isinstance(rec_params, ParameterVector):
-                    return_params.append(rec_params)
-                else:
-                    raise TypeError
-                self.num_init_design_completed += (
-                    1  # batch_size always 1 for init design planner
-                )
+            return_params = self.initial_design()
         
         else:
             # timings dictionary for analysis

@@ -140,6 +140,12 @@ def run_continuous(
     assert len(campaign.observations.get_params()) == BUDGET
     assert len(campaign.observations.get_values()) == BUDGET
 
+    # check that all the measured values pass the known constraint
+    meas_params = campaign.observations.get_params()
+    kcs = [known_constraints_cont(param) for param in meas_params]
+    assert all(kcs)
+
+
 
 def run_discrete(
     init_design_strategy, batch_size, use_descriptors, num_init_design=5
@@ -192,6 +198,12 @@ def run_discrete(
     assert len(campaign.observations.get_params()) == BUDGET
     assert len(campaign.observations.get_values()) == BUDGET
 
+    # check that all the measured values pass the known constraint
+    meas_params = campaign.observations.get_params()
+    kcs = [known_constraints_fully_disc(param) for param in meas_params]
+    assert all(kcs)
+
+
 
 def run_categorical(
     init_design_strategy, batch_size, use_descriptors, num_init_design=5
@@ -229,6 +241,12 @@ def run_categorical(
 
     assert len(campaign.observations.get_params()) == BUDGET
     assert len(campaign.observations.get_values()) == BUDGET
+
+    # check that all the measured values pass the known constraint
+    meas_params = campaign.observations.get_params()
+    kcs = [known_constraints_cat(param) for param in meas_params]
+    assert all(kcs)
+
 
 
 def run_mixed_cat_disc(
@@ -288,7 +306,7 @@ def run_mixed_cat_disc(
     campaign = Campaign()
     campaign.set_param_space(param_space)
 
-    BUDGET = num_init_design + batch_size * 4 + 1
+    BUDGET = num_init_design + batch_size * 4 
 
     while len(campaign.observations.get_values()) < BUDGET:
 
@@ -301,6 +319,11 @@ def run_mixed_cat_disc(
 
     assert len(campaign.observations.get_params()) == BUDGET
     assert len(campaign.observations.get_values()) == BUDGET
+
+    # check that all the measured values pass the known constraint
+    meas_params = campaign.observations.get_params()
+    kcs = [known_constraints_mixed_cat_disc(param) for param in meas_params]
+    assert all(kcs)
 
 def run_mixed_cat_disc_cont(
     init_design_strategy, batch_size, use_descriptors, num_init_design=5
@@ -359,7 +382,9 @@ def run_mixed_cat_disc_cont(
         num_init_design=num_init_design,
         batch_size=batch_size,
         use_descriptors=use_descriptors,
-        acquisition_optimizer_kind='genetic',
+        acquisition_optimizer_kind='gradient',
+        # TODO: implement the known constraints for this
+        #known_constraints=[]
         # acquisition_type='general',
         # general_parameters=[0],
     )
@@ -382,6 +407,11 @@ def run_mixed_cat_disc_cont(
     assert len(campaign.observations.get_params()) == BUDGET
     assert len(campaign.observations.get_values()) == BUDGET
 
+    # check that all the measured values pass the known constraint
+    # meas_params = campaign.observations.get_params()
+    # kcs = [known_constraints_cat_disc_cont(param) for param in meas_params]
+    # assert all(kcs)
+
 
 
 if  __name__ == '__main__':
@@ -390,8 +420,8 @@ if  __name__ == '__main__':
     #run_categorical('random',1,False )
     #run_mixed_cat_disc_cont('random',1,False)
     
-    #run_mixed_cat_disc('random', 1, False)
-    #run_mixed_cat_disc('random', 3, False)
+    run_mixed_cat_disc('random', 1, False)
+    run_mixed_cat_disc('random', 3, False)
 
-    run_discrete('random', 1, False)
+    #run_discrete('random', 1, False)
     #run_discrete('random', 2, False)
