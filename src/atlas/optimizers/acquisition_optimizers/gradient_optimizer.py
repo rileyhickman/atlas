@@ -186,12 +186,13 @@ class GradientOptimizer(AcquisitionOptimizer):
         max_batch_size,
         choices,
         unique,
-        strategy="greedy",
+        strategy="sequential",
     ):
         # this function assumes 'unique' argument is always set to True
         # strategy can be set to 'greedy' or 'sequential'
-        original_choices_batched = torch.clone(choices)
+        original_choices_batched = torch.clone(choices)        
         choices_batched = choices.unsqueeze(-2)
+
         if q > 1:
             if strategy == "sequential":
                 candidate_list, acq_value_list = [], []
