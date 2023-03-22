@@ -18,7 +18,7 @@ CONT = {
         "sobol",
         "lhs",
     ],  # init design strategues
-    "batch_size": [1],  # batch size
+    "batch_size": [2],  # batch size
     "use_descriptors": [False],  # use descriptors
     "acquisition_type": ['ei', 'ucb', 'variance'],
     "acquisition_optimizer": ['gradient', 'genetic'],
@@ -26,7 +26,7 @@ CONT = {
 
 DISC = {
     "init_design_strategy": ["random"],
-    "batch_size": [1],
+    "batch_size": [2],
     "use_descriptors": [False],
     "acquisition_type": ['ei', 'ucb', 'variance'],
     "acquisition_optimizer": ['gradient', 'genetic'],
@@ -34,7 +34,7 @@ DISC = {
 
 CAT = {
     "init_design_strategy": ["random"],
-    "batch_size": [1],
+    "batch_size": [2],
     "use_descriptors": [False, True],
     "acquisition_type": ['ei', 'ucb', 'variance'],
     "acquisition_optimizer": ['gradient', 'genetic'],
@@ -42,7 +42,7 @@ CAT = {
 
 MIXED_CAT_CONT = {
     "init_design_strategy": ["random"],
-    "batch_size": [1],
+    "batch_size": [2],
     "use_descriptors": [False, True],
     "acquisition_type": ['ei', 'ucb', 'variance'],
     "acquisition_optimizer": ['gradient', 'genetic'],
@@ -50,7 +50,7 @@ MIXED_CAT_CONT = {
 
 MIXED_DISC_CONT = {
     "init_design_strategy": ["random"],
-    "batch_size": [1],
+    "batch_size": [2],
     "use_descriptors": [False],
     "acquisition_type": ['ei', 'ucb', 'variance'],
     "acquisition_optimizer": ['gradient', 'genetic'],
@@ -59,7 +59,7 @@ MIXED_DISC_CONT = {
 
 MIXED_CAT_DISC = {
     "init_design_strategy": ["random"],
-    "batch_size": [1],
+    "batch_size": [2],
     "use_descriptors": [False, True],
     "acquisition_type": ['ei', 'ucb', 'variance'],
     "acquisition_optimizer": ['gradient', 'genetic'],
@@ -67,7 +67,7 @@ MIXED_CAT_DISC = {
 
 MIXED_CAT_DISC_CONT = {
     "init_design_strategy": ["random"],
-    "batch_size": [1],
+    "batch_size": [2],
     "use_descriptors": [False, True],
     "acquisition_type": ['ei', 'ucb', 'variance'],
     "acquisition_optimizer": ['gradient', 'genetic'],
@@ -86,6 +86,8 @@ def test_init_design_cont(init_design_strategy, batch_size, use_descriptors, acq
 @pytest.mark.parametrize("init_design_strategy", DISC["init_design_strategy"])
 @pytest.mark.parametrize("batch_size", DISC["batch_size"])
 @pytest.mark.parametrize("use_descriptors", DISC["use_descriptors"])
+@pytest.mark.parametrize("acquisition_type", DISC["acquisition_type"])
+@pytest.mark.parametrize("acquisition_optimizer", DISC["acquisition_optimizer"])
 def test_init_design_disc(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer):
     run_discrete(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer)
 
@@ -93,6 +95,8 @@ def test_init_design_disc(init_design_strategy, batch_size, use_descriptors, acq
 @pytest.mark.parametrize("init_design_strategy", CAT["init_design_strategy"])
 @pytest.mark.parametrize("batch_size", CAT["batch_size"])
 @pytest.mark.parametrize("use_descriptors", CAT["use_descriptors"])
+@pytest.mark.parametrize("acquisition_type", CAT["acquisition_type"])
+@pytest.mark.parametrize("acquisition_optimizer", CAT["acquisition_optimizer"])
 def test_init_design_cat(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer):
     run_categorical(init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer)
 
@@ -102,6 +106,8 @@ def test_init_design_cat(init_design_strategy, batch_size, use_descriptors, acqu
 )
 @pytest.mark.parametrize("batch_size", MIXED_CAT_CONT["batch_size"])
 @pytest.mark.parametrize("use_descriptors", MIXED_CAT_CONT["use_descriptors"])
+@pytest.mark.parametrize("acquisition_type", MIXED_CAT_CONT["acquisition_type"])
+@pytest.mark.parametrize("acquisition_optimizer", MIXED_CAT_CONT["acquisition_optimizer"])
 def test_init_design_mixed_cat_cont(
     init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer
 ):
@@ -113,6 +119,8 @@ def test_init_design_mixed_cat_cont(
 )
 @pytest.mark.parametrize("batch_size", MIXED_DISC_CONT["batch_size"])
 @pytest.mark.parametrize("use_descriptors", MIXED_DISC_CONT["use_descriptors"])
+@pytest.mark.parametrize("acquisition_type", MIXED_DISC_CONT["acquisition_type"])
+@pytest.mark.parametrize("acquisition_optimizer", MIXED_DISC_CONT["acquisition_optimizer"])
 def test_init_design_mixed_disc_cont(
     init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer
 ):
@@ -124,6 +132,8 @@ def test_init_design_mixed_disc_cont(
 )
 @pytest.mark.parametrize("batch_size", MIXED_CAT_DISC["batch_size"])
 @pytest.mark.parametrize("use_descriptors", MIXED_CAT_DISC["use_descriptors"])
+@pytest.mark.parametrize("acquisition_type", MIXED_CAT_DISC["acquisition_type"])
+@pytest.mark.parametrize("acquisition_optimizer", MIXED_CAT_DISC["acquisition_optimizer"])
 def test_init_design_mixed_cat_disc(
     init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer
 ):
@@ -137,6 +147,8 @@ def test_init_design_mixed_cat_disc(
 @pytest.mark.parametrize(
     "use_descriptors", MIXED_CAT_DISC_CONT["use_descriptors"]
 )
+@pytest.mark.parametrize("acquisition_type", MIXED_CAT_DISC_CONT["acquisition_type"])
+@pytest.mark.parametrize("acquisition_optimizer", MIXED_CAT_DISC_CONT["acquisition_optimizer"])
 def test_init_design_mixed_cat_disc_cont(
     init_design_strategy, batch_size, use_descriptors, acquisition_type, acquisition_optimizer
 ):
@@ -547,6 +559,8 @@ def run_mixed_cat_disc_cont(
 
     assert len(campaign.observations.get_params()) == BUDGET
     assert len(campaign.observations.get_values()) == BUDGET
+
+
 
 
 if __name__ == "__main__":

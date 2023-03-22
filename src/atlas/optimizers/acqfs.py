@@ -103,6 +103,7 @@ class FeasibilityAwareAcquisition:
 
 
 class VarianceBased(AcquisitionFunction):
+
 	"""Variance-based sampling (active learning)"""
 
 	def __init__(self, reg_model, **kwargs):
@@ -117,6 +118,7 @@ class VarianceBased(AcquisitionFunction):
 		)
 
 		return sigma.view(view_shape)
+
 
 class LowerConfidenceBound(AnalyticAcquisitionFunction):
 	def __init__(self, model, beta, maximize=False, posterior_transform=None, **kwargs) -> None:
@@ -270,7 +272,7 @@ class FeasibilityAwareVarainceBased(VarianceBased, FeasibilityAwareAcquisition):
 
 	def forward(self, X):
 		acqf = super().forward(X)
-		return self.compute_combined_acqf(acqf, p_feas)
+		return self.compute_combined_acqf(acqf, X)
 
 
 class FeasibilityAwareGeneral(AcquisitionFunction, FeasibilityAwareAcquisition):

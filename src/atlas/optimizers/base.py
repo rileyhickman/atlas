@@ -242,6 +242,7 @@ class BasePlanner(CustomPlanner):
             """build the GP classification model and likelihood
             and train the model
             """
+        
             model = ClassificationGPMatern(train_x, train_y)
             likelihood = gpytorch.likelihoods.BernoulliLikelihood()
 
@@ -259,6 +260,7 @@ class BasePlanner(CustomPlanner):
     ) -> Tuple[
         gpytorch.models.ApproximateGP, gpytorch.likelihoods.BernoulliLikelihood
     ]:
+
 
         model.train()
         likelihood.train()
@@ -762,3 +764,36 @@ class BasePlanner(CustomPlanner):
             self.num_init_design_attempted += 1
 
         return return_params
+    
+
+    def get_cla_surr_min_max(self, num_samples:int=5000) -> Tuple[int, int]:
+        """ estimate the max and min of the classification surrogate
+        """
+
+        samples, _ = propose_randomly(
+            num_samples,
+            self.param_space,
+            self.has_descriptors,
+        )
+        if (
+            self.problem_type == "fully_categorical"
+            and not self.has_descriptors
+        ):
+            # we dont scale the parameters if we have a fully one-hot-encoded representation
+            pass
+        else:
+            # scale the parameters
+            samples = forward_normalize(
+                samples, self.params_obj._mins_x, self.params_obj._maxs_x
+            )
+
+        X = torch.tensor(samples)
+
+        likelihood = self.cla_likelihood(self.cla_model(X.float()))
+        mean = 1.-likelihood.mean.detach() # convert p_infeas to p_feas
+        mean = mean.view(mean.shape[0], 1)
+
+        min_  = torch.amin(mean).item()
+        max_ = torch.amax(mean).item()
+
+        return min_, max_

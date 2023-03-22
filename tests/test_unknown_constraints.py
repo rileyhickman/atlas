@@ -92,7 +92,6 @@ def run_continuous(
             return np.nan
 
     split = feas_strategy_param.split("_")
-    print(split)
     feas_strategy, feas_param = split[0], float(split[1])
 
     param_space = ParameterSpace()
@@ -183,7 +182,7 @@ def run_qnehvi_mixed_cat_disc(
     batch_size,
     feas_strategy_param,
     use_descriptors,
-    num_init_design=5,
+    num_init_design=10,
 ):
 
     def surface(x):
@@ -283,4 +282,7 @@ if __name__ == "__main__":
     # run_continuous('random', 1, 'fwa-0', False)
     # run_continuous('random', 1, 'naive-0_0', False)
     
-    run_qnehvi_mixed_cat_disc('random', 1, 'naive-0_0', False)
+    #run_qnehvi_mixed_cat_disc('random', 1, 'naive-0_0', False)
+    #run_qnehvi_mixed_cat_disc('random', 1, 'fia_1', False)
+    run_qnehvi_mixed_cat_disc('random', 2, 'fia_1', False)
+    #run_qnehvi_mixed_cat_disc('random', 1, 'fca_0.5', False)

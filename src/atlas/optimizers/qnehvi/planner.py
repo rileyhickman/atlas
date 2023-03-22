@@ -39,6 +39,7 @@ from olympus import ParameterVector
 from olympus.campaigns import ParameterSpace
 from olympus.planners import AbstractPlanner, CustomPlanner, Planner
 from olympus.scalarizers import Scalarizer
+from olympus.utils.misc import get_hypervolume
 
 from atlas import Logger
 from atlas.optimizers.acqfs import (
@@ -355,13 +356,6 @@ class qNEHVIPlanner(BasePlanner):
 
                     elif self.feas_strategy == "naive-0":
                         
-                        # print('train x scaled cla : ', self.train_x_scaled_cla.shape)
-                        # print('train y scaled cla : ', self.train_y_scaled_cla.shape)
-
-                        # print('train x scaled reg : ', self.train_x_scaled_reg.shape)
-                        # print('train y scaled reg : ', self.train_y_scaled_reg.shape)
-
-                    
 
                         new_train_y_scaled_reg = deepcopy(
                             self.train_y_scaled_cla
@@ -370,7 +364,19 @@ class qNEHVIPlanner(BasePlanner):
                         # TODO: here, the worst objective actually must be computed using 
                         # hypervolume -> assume all minimization objectives at this point
                         # use reference point as worst value for each objecitve observed
-                        # ref_point = self.get_ref_point()
+                        ref_point = self.get_ref_point() #  current scaled refercence point
+
+                        # get the hypervolume for all observed points
+                        hypervols = []
+                        for train_y in self.train_y_scaled_reg:
+        
+                            hypervols.append(
+                                    get_hypervolume(
+                                        train_y.unsqueeze(0).detach().numpy(), 
+                                        ref_point.detach().numpy(),
+                                    )
+                            )
+
 
 
                         worst_obj = torch.amax(
@@ -407,6 +413,7 @@ class qNEHVIPlanner(BasePlanner):
 
             if not "naive-" in self.feas_strategy and torch.sum(self.train_y_scaled_cla).item() != 0.:
                 # build and train the classification surrogate model
+          
                 (
                     self.cla_model,
                     self.cla_likelihood,
@@ -422,7 +429,6 @@ class qNEHVIPlanner(BasePlanner):
                 # estimate the max and min of the cla surrogate
                 self.cla_surr_min_, self.cla_surr_max_ = self.get_cla_surr_min_max(num_samples=5000)
                 self.fca_cutoff = (self.cla_surr_max_-self.cla_surr_min_)*self.feas_param + self.cla_surr_min_
-
 
             else:
                 use_reg_only = True
@@ -493,8 +499,6 @@ class qNEHVIPlanner(BasePlanner):
     
 
     def get_acqf_min_max(self, reg_model, ref_point: List, num_samples: int = 3000) -> Tuple[int, int]:
-
-
 
         acqf = qNoisyExpectedHypervolumeImprovement(
             model=reg_model, 
@@ -766,9 +770,6 @@ if __name__ == '__main__':
                 measurement = surface.run(sample_arr, return_paramvector=True)
                 campaign.add_observation(sample_arr, measurement)
 
-                print('SAMPLE : ', sample)
-                print('MEASUREMENT : ', measurement)
-                print('')
 
 
     else:

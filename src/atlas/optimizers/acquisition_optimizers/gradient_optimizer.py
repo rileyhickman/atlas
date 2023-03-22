@@ -102,7 +102,6 @@ class GradientOptimizer(AcquisitionOptimizer):
             _
         ) = self.gen_initial_conditions()
 
-
         results, _ = optimize_acqf(
             acq_function=self.acqf,
             bounds=self.bounds,
@@ -122,12 +121,19 @@ class GradientOptimizer(AcquisitionOptimizer):
             self.has_descriptors,
         )
         # TODO: add in fca constraint callable here...
-        constraint_callable = None
+        if self.feas_strategy == "fca" and not self.use_reg_only:
+            # if we have feasibilty constrained acquisition, prepare only
+            # the feasible options as availble choices
+            fca_constraint_callable = self.fca_constraint
+        else:
+            fca_constraint_callable = None
+
 
         self.choices_feat, self.choices_cat = create_available_options(
             self.param_space,
             self._params,
-            constraint_callable,
+            fca_constraint_callable=fca_constraint_callable,
+            known_constraint_callables=self.known_constraints,
             normalize=self.has_descriptors,
             has_descriptors=self.has_descriptors,
             mins_x=self._mins_x,
@@ -186,7 +192,7 @@ class GradientOptimizer(AcquisitionOptimizer):
         max_batch_size,
         choices,
         unique,
-        strategy="sequential",
+        strategy="greedy",
     ):
         # this function assumes 'unique' argument is always set to True
         # strategy can be set to 'greedy' or 'sequential'
