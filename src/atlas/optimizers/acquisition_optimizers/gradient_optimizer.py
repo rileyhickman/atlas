@@ -45,6 +45,7 @@ class GradientOptimizer(AcquisitionOptimizer):
         feas_strategy: str,
         fca_constraint: Callable,
         params: torch.Tensor,
+        batched_strategy: str,
         timings_dict: Dict,
         use_reg_only=False,
         **kwargs: Any,
@@ -63,6 +64,7 @@ class GradientOptimizer(AcquisitionOptimizer):
         self.known_constraints = known_constraints
         self.batch_size = batch_size
         self.feas_strategy = feas_strategy
+        self.batched_strategy=batched_strategy
         self.fca_constraint = fca_constraint
         self.use_reg_only = use_reg_only
         self.has_descriptors = self.params_obj.has_descriptors
@@ -192,7 +194,6 @@ class GradientOptimizer(AcquisitionOptimizer):
         max_batch_size,
         choices,
         unique,
-        strategy="greedy",
     ):
         # this function assumes 'unique' argument is always set to True
         # strategy can be set to 'greedy' or 'sequential'
@@ -200,7 +201,7 @@ class GradientOptimizer(AcquisitionOptimizer):
         choices_batched = choices.unsqueeze(-2)
 
         if q > 1:
-            if strategy == "sequential":
+            if self.batched_strategy == "sequential":
                 candidate_list, acq_value_list = [], []
                 base_X_pending = acq_function.X_pending
                 for _ in range(q):
@@ -249,7 +250,7 @@ class GradientOptimizer(AcquisitionOptimizer):
 
                 return candidate_list, best_idxs
 
-            elif strategy == "greedy":
+            elif self.batched_strategy == "greedy":
                 with torch.no_grad():
                     acq_values = torch.cat(
                         [
@@ -285,7 +286,6 @@ class GradientOptimizer(AcquisitionOptimizer):
         cart_prod_choices,
         raw_samples=None,
         options=None,
-        strategy="greedy",
         inequality_constraints=None,
         equality_constraints=None,
         post_processing_func=None,

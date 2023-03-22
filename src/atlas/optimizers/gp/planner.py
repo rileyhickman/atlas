@@ -101,7 +101,7 @@ class BoTorchPlanner(BasePlanner):
         use_descriptors: bool = False,
         num_init_design: int = 5,
         init_design_strategy: str = "random",
-        acquisition_type: str = "ei",  # ei, ucb, variance, general
+        acquisition_type: str = "ei",  # qei, ei, ucb, variance, general
         acquisition_optimizer_kind: str = "gradient",  # gradient, genetic
         vgp_iters: int = 2000,
         vgp_lr: float = 0.1,
@@ -307,9 +307,10 @@ class BoTorchPlanner(BasePlanner):
             # get the approximate max and min of the acquisition function without the feasibility contribution
             acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled)
 
-            if self.acquisition_type == "ei":
-                if self.batch_size == 1:
-                    self.acqf = FeasibilityAwareEI(
+            if self.acquisition_type == 'ei':
+                if self.batch_size > 1 and self.batched_strategy=='sequential':
+                    Logger.log('Cannot use "sequential" batched strategy with EI acquisition function', 'FATAL')
+                self.acqf = FeasibilityAwareEI(
                         self.reg_model,
                         self.cla_model,
                         self.cla_likelihood,
@@ -322,16 +323,12 @@ class BoTorchPlanner(BasePlanner):
                         use_min_filter=self.use_min_filter,
                         use_reg_only=use_reg_only,
                     )
-                elif self.batch_size > 1:
-                    #if self.problem_type == "fully_continuous":
-                    if self.batched_strategy=='sequential':
-                        acqf_object = FeasibilityAwareQEI
-                    elif self.batched_strategy=='greedy':
-                        acqf_object = FeasibilityAwareEI
-                    else:
-                        msg = f'Batched acqf opt strategy {self.batched_strategy} not found. Choose from "sequential" or "greedy".'
-                        Logger.log(msg, 'FATAL')
-                    self.acqf = acqf_object(
+
+            elif self.acquisition_type == 'qei':
+                if not self.batch_size > 1:
+                    Logger.log('QEI acquisition function can only be used if batch size > 1', 'FATAL')
+        
+                self.acqf = FeasibilityAwareQEI(
                         self.reg_model,
                         self.cla_model,
                         self.cla_likelihood,
@@ -380,22 +377,6 @@ class BoTorchPlanner(BasePlanner):
                     use_min_filter=self.use_min_filter,
                 )
 
-            elif self.acquisition_type == "ucbv2":
-                self.acqf = FeasibilityAwareUCBV2(
-                    self.reg_model,
-                    self.cla_model,
-                    self.cla_likelihood,
-                    self.param_space,
-                    f_best_scaled,
-                    self.feas_strategy,
-                    self.feas_param,
-                    infeas_ratio,
-                    acqf_min_max,
-                    use_reg_only=use_reg_only,
-                    #beta=torch.tensor([0.2]).repeat(self.batch_size),
-                    beta=torch.tensor([0.2]).repeat(self.batch_size),
-                    use_min_filter=self.use_min_filter,
-                )
 
             elif self.acquisition_type == "variance":
                 self.acqf = FeasibilityAwareVarainceBased(
@@ -443,6 +424,7 @@ class BoTorchPlanner(BasePlanner):
                     self.feas_strategy,
                     self.fca_constraint,
                     self._params,
+                    self.batched_strategy,
                     self.timings_dict,
                     use_reg_only=use_reg_only,
                 )
@@ -478,6 +460,11 @@ class BoTorchPlanner(BasePlanner):
         """
         if self.acquisition_type == "ei":
             acqf = ExpectedImprovement(
+                reg_model, f_best_scaled, objective=None, maximize=False
+            )
+
+        if self.acquisition_type == "qei":
+            acqf = qExpectedImprovement(
                 reg_model, f_best_scaled, objective=None, maximize=False
             )
 

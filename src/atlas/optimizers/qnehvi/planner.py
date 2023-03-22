@@ -85,6 +85,7 @@ class qNEHVIPlanner(BasePlanner):
         feas_param: Optional[float] = 0.2,
         use_min_filter: bool = True,
         batch_size: int = 1,
+        batched_strategy: str = 'sequential', # sequential or greedy
         random_seed: Optional[int] = None,
         use_descriptors: bool = False,
         num_init_design: int = 5,
@@ -476,6 +477,7 @@ class qNEHVIPlanner(BasePlanner):
                     self.feas_strategy,
                     self.fca_constraint,
                     self._params,
+                    self.batched_strategy,
                     self.timings_dict,
                     use_reg_only=use_reg_only,
                 )
@@ -553,8 +555,6 @@ class qNEHVIPlanner(BasePlanner):
         return ref_point
     
     
-
-
 
 if __name__ == '__main__':
 
