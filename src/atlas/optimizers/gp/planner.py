@@ -237,11 +237,11 @@ class BoTorchPlanner(BasePlanner):
                             self.train_y_scaled_cla
                         ).double()
 
-                        worst_obj = torch.amax(
-                            self.train_y_scaled_reg[
-                                ~self.train_y_scaled_reg.isnan()
-                            ]
-                        )
+                        # print(self.train_y_scaled_reg[~self.train_y_scaled_reg.isnan()].shape)
+                        # print(self.train_y_scaled_reg.shape)
+                        # print(self.train_y_scaled_reg)
+
+                        worst_obj = torch.amax(self.train_y_scaled_reg[~self.train_y_scaled_reg.isnan()])                            
 
                         to_replace = torch.ones(infeas_ix.size()) * worst_obj
 
