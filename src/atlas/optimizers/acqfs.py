@@ -12,6 +12,7 @@ from botorch.acquisition import (
 	AnalyticAcquisitionFunction,
 	ExpectedImprovement,
 	UpperConfidenceBound,
+	qUpperConfidenceBound,
 
 )
 
@@ -138,97 +139,6 @@ class LowerConfidenceBound(AnalyticAcquisitionFunction):
 		acqf = (mean if self.maximize else -mean) - self.beta.sqrt()*sigma
 		return acqf
 
-
-class FeasibilityAwareUCBV2(AcquisitionFunction, FeasibilityAwareAcquisition):
-
-	def __init__(
-		self,
-		reg_model,
-		cla_model,
-		cla_likelihood,
-		param_space,
-		best_f,
-		feas_strategy,
-		feas_param,
-		infeas_ratio,
-		acqf_min_max,
-		use_p_feas_only=False,
-		use_reg_only=False,
-		beta=torch.tensor([0.2]),
-		use_min_filter=True,
-		objective=None,
-		maximize=False,
-		**kwargs,
-	) -> None:
-		super().__init__(reg_model, **kwargs)
-		self.reg_model = reg_model
-		self.cla_model = cla_model
-		self.cla_likelihood = cla_likelihood
-		self.param_space = param_space
-		self.best_f = best_f
-		self.feas_strategy = feas_strategy
-		self.feas_param = feas_param
-		self.feas_strategy = feas_strategy
-		self.feas_param = feas_param
-		self.infeas_ratio = infeas_ratio
-		self.acqf_min_max = acqf_min_max
-		self.use_p_feas_only = use_p_feas_only
-		self.beta = beta
-		self.objective = objective
-		self.maximize = maximize
-		self.use_min_filter = use_min_filter
-		self.use_reg_only = use_reg_only
-
-		# set the p_feas postprocessing step
-		self.set_p_feas_postprocess()
-
-
-	def forward(self, X):
-
-		posterior = self.reg_model.posterior(X.double())
-		mu = posterior.mean
-		sigma = posterior.variance.clamp_min(1e-12).sqrt()
-		view_shape = (
-			sigma.shape[:-2] if sigma.shape[-2] == 1 else sigma.shape[:-1]
-		)
-		mu = -mu.view(view_shape) # always minimization
-		sigma = sigma.view(view_shape)
-
-		mu = (mu - self.acqf_min_max[0][0]) / (
-			self.acqf_min_max[0][1]
-			- self.acqf_min_max[0][0]  # normalize sigma value
-		)
-		sigma = (sigma - self.acqf_min_max[1][0]) / (
-			self.acqf_min_max[1][1]
-			- self.acqf_min_max[1][0]  # normalize sigma value
-		)
-
-		# p_feas should be 1 - P(infeasible|X) because UCB is
-		# maximized by default
-		if not "naive-" in self.feas_strategy:
-			p_feas = 1.0 - self.compute_feas_post(X)
-		else:
-			p_feas = 1.0
-
-		p_feas *= 0.5
-		if self.feas_strategy == "fwa":
-			return mu*p_feas + np.sqrt(self.beta)*sigma
-
-		elif self.feas_strategy == "fca":
-			return mu + self.beta*sigma
-
-		# TODO: update the function for fia
-		elif self.feas_strategy == "fia":
-			return ((1.0 - self.infeas_ratio**self.feas_param) * acqf) + (
-				(self.infeas_ratio**self.feas_param) * (p_feas)
-			)
-		elif "naive-" in self.feas_strategy:
-			if self.use_p_feas_only:
-				return p_feas
-			else:
-				return mu + self.beta*sigma
-		else:
-			raise NotImplementedError
 
 
 class FeasibilityAwareVarainceBased(VarianceBased, FeasibilityAwareAcquisition):
@@ -558,6 +468,7 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 	def forward(self, X):
 		acqf = super().forward(X)
 		return self.compute_combined_acqf(acqf, X)
+
 
 
 class FeasibilityAwareLCB(LowerConfidenceBound, FeasibilityAwareAcquisition):

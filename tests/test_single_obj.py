@@ -566,7 +566,7 @@ def run_mixed_cat_disc_cont(
 if __name__ == "__main__":
     # pass
     # run_discrete('random')
-    run_continuous("lhs", 1, False)
+    #run_continuous("lhs", 1, False)
     # run_categorical_ohe('random')
     # run_categorical_desc('random')
     # run_mixed_cat_disc('random')
@@ -576,3 +576,12 @@ if __name__ == "__main__":
     # run_mixed_disc_cont('random')
     # run_mixed_cat_disc_cont('random')
     # run_mixed_cat_disc_cont_desc('random')
+
+    run_mixed_cat_disc(
+        init_design_strategy='random', 
+        batch_size=5, 
+        use_descriptors=True, 
+        acquisition_type='ucb', 
+        acquisition_optimizer='gradient', 
+        num_init_design=5,
+    )
