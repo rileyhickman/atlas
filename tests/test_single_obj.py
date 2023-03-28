@@ -579,7 +579,7 @@ if __name__ == "__main__":
 
     run_mixed_cat_disc(
         init_design_strategy='random', 
-        batch_size=5, 
+        batch_size=1, 
         use_descriptors=True, 
         acquisition_type='ucb', 
         acquisition_optimizer='gradient', 

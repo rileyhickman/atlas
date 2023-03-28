@@ -356,7 +356,7 @@ class BoTorchPlanner(BasePlanner):
                     acqf_min_max,
                     use_reg_only=use_reg_only,
                     #beta=torch.tensor([0.2]).repeat(self.batch_size),
-                    beta=1.,#torch.tensor([1.]).repeat(self.batch_size),
+                    beta=torch.tensor([1.]).repeat(self.batch_size),
                     use_min_filter=self.use_min_filter,
                 )
 
@@ -469,19 +469,14 @@ class BoTorchPlanner(BasePlanner):
             )
 
         elif self.acquisition_type == "ucb":
-            # acqf = UpperConfidenceBound(
-            #     reg_model,
-            #     #beta=torch.tensor([0.2]).repeat(self.batch_size),
-            #     beta=1.,#torch.tensor([1.]).repeat(self.batch_size),
-            #     objective=None,
-            #     maximize=False,
-            # )
-            acqf = qUpperConfidenceBound(
-                model=reg_model,
-                beta=1.,
-                #maximize=False
+            acqf = UpperConfidenceBound(
+                reg_model,
+                #beta=torch.tensor([0.2]).repeat(self.batch_size),
+                beta=torch.tensor([1.]).repeat(self.batch_size),
+                objective=None,
+                maximize=False,
             )
-            
+           
 
         elif self.acquisition_type == "lcb":
             acqf = LowerConfidenceBound(
