@@ -130,6 +130,10 @@ class BasePlanner(CustomPlanner):
         self.goals = goals
         self.golem_config = golem_config
 
+        # initial design point trackers
+        self.num_init_design_attempted = 0
+        self.num_init_design_completed = 0
+
         # check multiobjective stuff
         if self.is_moo:
             if self.goals is None:
@@ -727,15 +731,32 @@ class BasePlanner(CustomPlanner):
     def initial_design(self) -> List[ParameterVector]:
         ''' Acquire initial design samples using one of several supported strategues
         '''
-        Logger.log(
-            f'Selecting {self.num_init_design} inital design points using {self.init_design_strategy}',
-            'INFO', 
-        )
+        num_init_remain = self.num_init_design - len(self._values)
+        num_init_batches = math.ceil(self.num_init_design/self.batch_size)
+        init_batch_num = int((len(self._values)/self.batch_size)+1)
+
+        if num_init_remain > 0: 
+            if num_init_remain % self.batch_size == 0:
+                num_gen = self.batch_size
+                Logger.log(f'Generating {num_gen} initial design points (batch {init_batch_num}/{num_init_batches})', 'INFO')
+            else:
+                num_gen = num_init_remain
+                Logger.log(
+                    f'Remaining initial design points do not match batch size. Generating {num_gen} points (batch {init_batch_num}/{num_init_batches})',
+                    'WARNING',
+                )
+        elif num_init_remain <= 0: 
+            # we have all nan values
+            assert np.all(np.isnan(self._values))
+            num_gen = self.batch_size
+            Logger.log(f'Found all NaN observations after initial design. Generating {num_gen} additional points', 'WARNING')
+        else:
+            Logger.log('Something is wrong', 'FATAL')
+
         # set parameter space for the initial design planner
         self.init_design_planner.set_param_space(self.param_space)
         return_params = []
-        self.num_init_design_attempted = 0
-        while self.num_init_design_completed < self.num_init_design:
+        while len(return_params) < num_gen:
             # TODO: this is pretty sloppy - consider standardizing this
             if self.init_design_strategy == "random":
                 self.init_design_planner._tell(iteration=self.num_init_design_attempted)

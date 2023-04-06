@@ -470,7 +470,6 @@ class FeasibilityAwareUCB(UpperConfidenceBound, FeasibilityAwareAcquisition):
 		return self.compute_combined_acqf(acqf, X)
 
 
-
 class FeasibilityAwareLCB(LowerConfidenceBound, FeasibilityAwareAcquisition):
 	def __init__(
 		self,
@@ -571,7 +570,6 @@ class FeasibilityAwareqNEHVI(qNoisyExpectedHypervolumeImprovement, FeasibilityAw
 	def forward(self, X):
 		acqf = -super().forward(X) # why do we seem to need negative sign??
 		return self.compute_combined_acqf(acqf, X)
-
 
 
 
@@ -825,7 +823,7 @@ def create_available_options(
 			constraint_vals = fca_constraint_callable(constraint_input)
 			feas_mask = torch.where(constraint_vals >= 0.0)[0]
 			print(
-				f"{feas_mask.shape[0]}/{current_avail_feat.shape[0]} options are feasible"
+				f"{feas_mask.shape[0]}/{len(current_avail_feat)} options are feasible"
 			)
 			if feas_mask.shape[0] == 0:
 				msg = "No feasible samples after FCA constraint, resorting back to full space"
