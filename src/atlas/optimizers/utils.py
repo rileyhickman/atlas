@@ -233,7 +233,6 @@ def reverse_normalize(
     return data * (max_ - min_) + min_
 
 
-
 def param_vector_to_dict(
     sample: np.ndarray,
     param_space: ParameterSpace,
@@ -273,6 +272,29 @@ def flip_source_tasks(source_tasks):
         )
 
     return flipped_source_tasks
+
+
+def partition(S):
+    """ ...
+    """
+    if len(S) == 1:
+        yield [S]
+        return 
+
+    first = S[0]
+    for smaller in partition(S[1:]):
+        for n, subset in enumerate(smaller):
+            yield smaller[:n]+[[first] + subset]+smaller[n+1:]
+        yield [[first]]+smaller 
+    
+def gen_partitions(S):
+    """
+    generate all possible partitions of Ns-element set S
+    
+    Args: 
+        S (list): list of non-functional parameters S
+    """
+    return [p for _, p in enumerate(partition(S),1)]
 
 
 class Scaler:
@@ -500,3 +522,5 @@ class Scaler:
                 )
             elif self.value_type == "identity":
                 return self.identity(sample, "reverse")
+
+

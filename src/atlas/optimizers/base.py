@@ -130,6 +130,7 @@ class BasePlanner(CustomPlanner):
         self.goals = goals
         self.golem_config = golem_config
 
+
         # initial design point trackers
         self.num_init_design_attempted = 0
         self.num_init_design_completed = 0
@@ -171,6 +172,9 @@ class BasePlanner(CustomPlanner):
 
         self.num_init_design_completed = 0
 
+
+
+
     def _set_param_space(self, param_space: ParameterSpace):
         """set the Olympus parameter space (not actually really needed)"""
 
@@ -209,8 +213,9 @@ class BasePlanner(CustomPlanner):
         else:
             self.has_descriptors = False
 
-        # check general parameter types, if we have some
+        # check general parameter config
         if self.general_parameters is not None:
+            # check types of general parameters
             if not all(
                 [
                     self.param_space[ix].type in ["discrete", "categorical"]
@@ -693,6 +698,7 @@ class BasePlanner(CustomPlanner):
             has_descriptors=self.has_descriptors,
             general_parameters=self.general_parameters,
         )
+
 
     def fca_constraint(self, X: torch.Tensor) -> torch.Tensor:
         """Each callable is expected to take a `(num_restarts) x q x d`-dim tensor as an

@@ -130,6 +130,12 @@ class GradientOptimizer(AcquisitionOptimizer):
         else:
             fca_constraint_callable = None
 
+        # generate initial samples
+        (
+            nonlinear_inequality_constraints,
+            batch_initial_conditions,
+            _
+        ) = self.gen_initial_conditions(num_restarts=30)
 
         self.choices_feat, self.choices_cat = create_available_options(
             self.param_space,
@@ -150,6 +156,7 @@ class GradientOptimizer(AcquisitionOptimizer):
             fixed_features_list=fixed_features_list,
             cart_prod_choices=self.choices_feat.float(),
             raw_samples=800,
+            batch_initial_conditions=batch_initial_conditions,
         )
 
         return results, best_idx
@@ -293,7 +300,6 @@ class GradientOptimizer(AcquisitionOptimizer):
         **kwargs,
     ):
         # function inspired by botorch code
-
         if not fixed_features_list:
             raise ValueError("fixed_features_list must be non-empty.")
 

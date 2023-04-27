@@ -34,7 +34,7 @@ from olympus.scalarizers import Scalarizer
 
 from atlas import Logger
 from atlas.optimizers.acqfs import (
-    FeasibilityAwareGeneralPartition,
+    MedusaAcquisition,
     create_available_options,
 )
 from atlas.optimizers.acquisition_optimizers import GeneticGeneralOptimizer
@@ -284,19 +284,10 @@ class MedusaPlanner(BasePlanner):
             acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled)
 
             # medusa always uses the feasibility aware general partition acquisition function
-            self.acqf = FeasibilityAwareGeneralPartition(
+      
+            self.acqf = MedusaAcquisition(
                 self.reg_model,
-                self.cla_model,
-                self.cla_likelihood,
                 self.params_obj,
-                self.param_space,
-                f_best_scaled,
-                self.feas_strategy,
-                self.feas_param,
-                infeas_ratio,
-                acqf_min_max,
-                use_min_filter=self.use_min_filter,
-                use_reg_only=use_reg_only,
             )
 
             # medusa always uses genetic general acqusition optimizer

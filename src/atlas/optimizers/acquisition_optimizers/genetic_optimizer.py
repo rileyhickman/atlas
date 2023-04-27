@@ -104,7 +104,7 @@ class GeneticOptimizer(AcquisitionOptimizer):
                 param_ranges.append(len(param.options))
                 if self.has_descriptors:
                     counter+=len(param.descriptors[0])
-                else:``
+                else:
                     counter+=len(param.options)
         return np.array(param_ranges)
 
@@ -204,7 +204,7 @@ class GeneticOptimizer(AcquisitionOptimizer):
         # setup GA with DEAP
         creator.create(
             "FitnessMin", base.Fitness, weights=[-1.0]
-        )  # we minimize the acquisition
+        )  # we minimize negative of the acquisition
         creator.create("Individual", list, fitness=creator.FitnessMin)
 
         # ------------

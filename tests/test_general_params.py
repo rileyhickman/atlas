@@ -101,8 +101,9 @@ def test_general_cat(batch_size, use_descriptors):
         num_init_design=5,
         batch_size=batch_size,
         use_descriptors=use_descriptors,
+        acquisition_type='general',
         acquisition_optimizer_kind='gradient',
-        general_parmeters=[0],
+        general_parameters=[0],
         
     )
     planner.set_param_space(param_space)
@@ -273,4 +274,6 @@ if __name__ == '__main__':
 
     #test_general_cat(batch_size=1, use_descriptors=False)  
     #test_general_disc(batch_size=1)    
-    test_general_cat_moo(batch_size=1, use_descriptors=False)
+    #test_general_cat_moo(batch_size=1, use_descriptors=False)
+
+    test_general_cat(batch_size=1, use_descriptors=False)

@@ -585,6 +585,103 @@ class FeasibilityAwareGeneralPartition(
         pass
 
 
+
+class MedusaAcquisition(AcquisitionFunction):
+    """ Acquisition function for Medsua
+
+    Args: 
+        reg_model: gpytorch model 
+    """
+    def __init__(
+            self, 
+            reg_model,
+            params_obj,
+        ):
+        self.reg_model = reg_model
+        self.params_obj = params_obj
+        self.param_space = self.params_obj.param_space
+
+        # set up non-functional parameter representations
+        self.X_sns_empty, _ = self.generate_X_sns()
+        self.functional_dims = np.logical_not(self.params_obj.exp_general_mask)
+
+
+    def __call__(self, X_funcs, Gs):
+        """ Evaluate the acquisition function
+
+        Args:
+            X_func (): functional parameter settings, this should be 
+            a list with 'shape' (# samples, Ng, param_dim)
+
+            G (): list of subsets of the non-functional parameters
+            with shape (# samples, Ng, |Sg| )
+
+        """
+
+        # loop over the # samples
+        # for X_func, G in zip(X_funcs, Gs):
+
+        #     # loop through the X_funcs and Sgs
+        #     for 
+
+
+        return None
+    
+
+    def evaluate_single_Sg(self):
+        """ ...
+        """
+        return None
+
+    def generate_X_sns(self):
+        # generate Cartesian product space of the general parameter options
+        param_options = []
+        for ix in self.params_obj.general_dims:
+            param_options.append(self.param_space[ix].options)
+
+        cart_product = list(itertools.product(*param_options))
+        cart_product = [list(elem) for elem in cart_product]
+
+        X_sns_empty = torch.empty(
+            size=(len(cart_product), self.params_obj.expanded_dims)
+        ).double()
+        general_expanded = []
+        general_raw = []
+        for elem in cart_product:
+            # convert to ohe and add to currently available options
+            ohe, raw = [], []
+            for val, obj in zip(elem, self.param_space):
+                if obj.type == "categorical":
+                    ohe.append(
+                        cat_param_to_feat(
+                            obj, val, self.params_obj.has_descriptors
+                        )
+                    )
+                    raw.append(val)
+                else:
+                    ohe.append([val])
+            general_expanded.append(np.concatenate(ohe))
+            general_raw.append(raw)
+
+        general_expanded = torch.tensor(np.array(general_expanded))
+
+        X_sns_empty[:, self.params_obj.exp_general_mask] = general_expanded
+        # forward normalize
+        X_sns_empty = forward_normalize(
+            X_sns_empty,
+            self.params_obj._mins_x,
+            self.params_obj._maxs_x,
+        )
+        # TODO: careful of the batch size, will need to change this
+        X_sns_empty = torch.unsqueeze(X_sns_empty, 1)
+
+        return X_sns_empty, general_raw
+
+
+        
+
+
+
 def get_batch_initial_conditions(
     num_restarts,
     batch_size,

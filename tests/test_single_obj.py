@@ -283,6 +283,9 @@ def run_categorical(
             # print(sample, measurement)
             campaign.add_observation(sample_arr, measurement[0])
 
+    # print(planner.params_obj._mins_x)
+    # print(planner.params_obj._maxs_x)
+
     assert len(campaign.observations.get_params()) == BUDGET
     assert len(campaign.observations.get_values()) == BUDGET
 
@@ -577,11 +580,21 @@ if __name__ == "__main__":
     # run_mixed_cat_disc_cont('random')
     # run_mixed_cat_disc_cont_desc('random')
 
-    run_mixed_cat_disc(
+    # run_mixed_cat_disc(
+    #     init_design_strategy='random', 
+    #     batch_size=1, 
+    #     use_descriptors=True, 
+    #     acquisition_type='ucb', 
+    #     acquisition_optimizer='gradient', 
+    #     num_init_design=5,
+    # )
+
+    run_categorical(
         init_design_strategy='random', 
         batch_size=1, 
-        use_descriptors=True, 
-        acquisition_type='ucb', 
+        use_descriptors=False, 
+        acquisition_type='ei', 
         acquisition_optimizer='gradient', 
-        num_init_design=5,
+        num_init_design=5
     )
+

@@ -123,6 +123,14 @@ class BoTorchPlanner(BasePlanner):
         }
         super().__init__(**local_args)
 
+        # check that we are using the 'general' parameter acquisition
+        if self.general_parameters is not None:
+            if not self.acquisition_type == 'general':
+                msg = f'Acquisition type {self.acquisition_type} requested, but general parameters specified. Overriding to "general"...'
+                Logger.log(msg, 'WARNING')
+
+                self.acquisition_type = 'general'
+
     def build_train_regression_gp(
         self, train_x: torch.Tensor, train_y: torch.Tensor
     ) -> gpytorch.models.ExactGP:

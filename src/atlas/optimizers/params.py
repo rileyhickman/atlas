@@ -211,48 +211,48 @@ class Parameters():
 
 
 	def get_bounds(self) -> torch.Tensor:
-	    """returns scaled bounds of the parameter space
-	    torch tensor of shape (# dims, 2) (low and upper bounds)
-	    """
-	    bounds = []
-	    idx_counter = 0
-	    for param_ix, param in enumerate(self.param_space):
-	        if param.type == "continuous":
-	            b = np.array([param.low, param.high])
-	            b = (b - self._mins_x[idx_counter]) / (
-	                self._maxs_x[idx_counter] - self._mins_x[idx_counter]
-	            )
-	            bounds.append(b)
-	            idx_counter += 1
-	        elif param.type == "discrete":
-	            b = np.array([np.amin(param.options), np.amax(param.options)])
-	            b = (b - self._mins_x[idx_counter]) / (
-	                self._maxs_x[idx_counter] - self._mins_x[idx_counter]
-	            )
-	            bounds.append(b)
-	            idx_counter += 1
-	        elif param.type == "categorical":
-	            if self.has_descriptors:
-	                for desc_ix in range(len(param.descriptors[0])):
-	                    min_ = np.amin(
-	                        [
-	                            param.descriptors[opt_ix][desc_ix]
-	                            for opt_ix in range(len(param.options))
-	                        ]
-	                    )
-	                    max_ = np.amax(
-	                        [
-	                            param.descriptors[opt_ix][desc_ix]
-	                            for opt_ix in range(len(param.options))
-	                        ]
-	                    )
-	                    bounds += [[min_, max_]]
-	                idx_counter += len(param.descriptors[0])
-	            else:
-	                bounds += [[0, 1] for _ in param.options]
-	                idx_counter += len(param.options)
+		"""returns scaled bounds of the parameter space
+		torch tensor of shape (# dims, 2) (low and upper bounds)
+		"""
+		bounds = []
+		idx_counter = 0
+		for param_ix, param in enumerate(self.param_space):
+			if param.type == "continuous":
+				b = np.array([param.low, param.high])
+				b = (b - self._mins_x[idx_counter]) / (
+					self._maxs_x[idx_counter] - self._mins_x[idx_counter]
+				)
+				bounds.append(b)
+				idx_counter += 1
+			elif param.type == "discrete":
+				b = np.array([np.amin(param.options), np.amax(param.options)])
+				b = (b - self._mins_x[idx_counter]) / (
+					self._maxs_x[idx_counter] - self._mins_x[idx_counter]
+				)
+				bounds.append(b)
+				idx_counter += 1
+			elif param.type == "categorical":
+				if self.has_descriptors:
+					for desc_ix in range(len(param.descriptors[0])):
+						min_ = np.amin(
+							[
+								param.descriptors[opt_ix][desc_ix]
+								for opt_ix in range(len(param.options))
+							]
+						)
+						max_ = np.amax(
+							[
+								param.descriptors[opt_ix][desc_ix]
+								for opt_ix in range(len(param.options))
+							]
+						)
+						bounds += [[min_, max_]]
+					idx_counter += len(param.descriptors[0])
+				else:
+					bounds += [[0, 1] for _ in param.options]
+					idx_counter += len(param.options)
 
-	    return torch.tensor(np.array(bounds)).T.float()
+		return torch.tensor(np.array(bounds)).T.float()
 
 
 	def param_vectors_to_expanded(
@@ -388,6 +388,8 @@ class Parameters():
 			expanded = forward_normalize(expanded, self._mins_x, self._maxs_x)
 
 		return expanded
+	
+
 
 
 
