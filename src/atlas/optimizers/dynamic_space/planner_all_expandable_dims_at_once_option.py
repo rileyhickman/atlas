@@ -81,7 +81,7 @@ from olympus.objects import (
 from sklearn.preprocessing import normalize
 
 
-class DynamicSSPlanner(BasePlanner):
+class Dynamic_Flexible_Planner(BasePlanner):
     """Wrapper for GP-based Bayesiam optimization using a dynamic search space bzsed on Ha et al.
     Args:
             goal (str): the optimization goal, "maximize" or "minimize"
@@ -123,6 +123,7 @@ class DynamicSSPlanner(BasePlanner):
         acquisition_type: str = "ucb",  # ei, ucb, variance, general
         acquisition_optimizer_kind: str = "gradient",  # gradient, genetic
         is_moo: bool = False,
+        expandable_dims: Optional[List[int]] = None,
         #### below are parameters that are mostly not used
         feas_strategy: Optional[str] = "naive-0",
         feas_param: Optional[float] = 0.2,
@@ -160,12 +161,8 @@ class DynamicSSPlanner(BasePlanner):
 
         self.func_param_space: ParameterSpace = None
         self.param_space: ParameterSpace = None
-        
+        self.expandable_dims = expandable_dims
 
-        # List to store important values
-        self.regret_iter = []
-        self.r_optimal_iter = []
-        self.bounds_iter =  []
     
     def _ask(self) -> List[ParameterVector]:
 
@@ -214,14 +211,8 @@ class DynamicSSPlanner(BasePlanner):
                 bounds.append([lower, upper])
             bounds = np.array(bounds)
 
-        
             print("Bounds {}".format(bounds))
-            print(f"n_iter: {n_iter}")
-            print(f"n_iter_i:{self.n_iter_i}")
-            print(f"iter_adjust: {self.iter_adjust}")
 
-
-    
             (
                     self.train_x_scaled_cla,
                     self.train_y_scaled_cla,
@@ -229,7 +220,7 @@ class DynamicSSPlanner(BasePlanner):
                     self.train_y_scaled_reg,
                 ) = self.build_train_data()
 
-            self.reg_model = self.build_train_regression_gp2(self.train_x_scaled_reg, self.train_y_scaled_reg)
+            self.reg_model = self.build_train_regression_gp(self.train_x_scaled_reg, self.train_y_scaled_reg)
             self.cla_model, self.cla_likelihood = None, None
             f_best_argmin = torch.argmin(self.train_y_scaled_reg)
             f_best_scaled = self.train_y_scaled_reg[f_best_argmin][0].float()
@@ -238,20 +229,11 @@ class DynamicSSPlanner(BasePlanner):
                     / self.train_x_scaled_cla.size(0)
                 ).item()
 
+            self.n_init_points, self.input_dim = np.shape(self.train_x_scaled_reg.detach().numpy())
+
             # Extract Gaussian Process hyper-parameters
             # kernel_k2 is the length-scale
             # theta_n is the scale factor
-
-            self.n_init_points, self.input_dim = np.shape(self.train_x_scaled_reg.detach().numpy())
-
-            raw_outputscale =self.reg_model.covar_module.outputscale
-            raw_lengthscale = self.reg_model.covar_module.base_kernel.raw_lengthscale
-            outputscale_constraint = self.reg_model.covar_module.raw_outputscale_constraint
-            ls_constraint = self.reg_model.covar_module.base_kernel.raw_lengthscale_constraint
-
-            kernel_k1 = self.reg_model.covar_module.outputscale.detach().numpy().item()
-            theta_n = np.sqrt(kernel_k1)
-            kernel_k2 = np.float64(ls_constraint.transform(raw_lengthscale).item())
 
         
             # Re-arrange the initial random observations
@@ -264,6 +246,10 @@ class DynamicSSPlanner(BasePlanner):
 
             # Compute the acquisition function at the observation points
             # b_n is found by using the correct formula
+
+            kernel_k1 = self.reg_model.covar_module.outputscale.detach().numpy().item()
+            theta_n = np.sqrt(kernel_k1)
+            kernel_k2 = self.reg_model.covar_module.base_kernel.lengthscale.detach().numpy().item()
             lengthscale = kernel_k2
             thetan_2 = kernel_k1
 
@@ -273,23 +259,8 @@ class DynamicSSPlanner(BasePlanner):
             tau_n = (4*self.input_dim+4)*np.log(n_iter) + 2*np.log(2*np.pi**2/(3*self.sigma)) \
                     + 2*self.input_dim*np.log(self.input_dim*b*radius*np.sqrt(np.log(4*self.input_dim*a/self.sigma)))
             b_n = np.sqrt(np.abs(self.nu*tau_n))
-
-            #print(lengthscale)
-            #print(thetan_2)
-            #print(radius)
-            #print(b)
-            #print(a)
-            #print(tau_n)
-            #print(b_n)
-        
-
-            f_preds = self.reg_model(self.train_x_scaled_reg)
-            y_init_mean, y_init_std = f_preds.mean.detach().numpy(), f_preds.variance.detach().numpy()
-            acq_init = y_init_mean.ravel() + b_n*y_init_std.ravel()
-            #print('b_n is: {}'.format(b_n))
-
+ 
             # Optimize the acquisition function
-
             f_best_argmin = torch.argmin(self.train_y_scaled_reg)
             f_best_scaled = self.train_y_scaled_reg[f_best_argmin][0].float()
             acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled, b_n=b_n)
@@ -359,13 +330,6 @@ class DynamicSSPlanner(BasePlanner):
             self.mins_x = acquisition_optimizer._mins_x
             self.maxs_x = acquisition_optimizer._maxs_x
 
-
-
-            # print("Unnormalized x:")
-            # print(reverse_normalize(self.train_x_scaled_reg, self.mins_x, self.maxs_x))
-
-            # print("Unormalized x:")
-            # print(self.train_x_scaled_reg, self.mins_x, self.maxs_x)
     
             final_params = acquisition_optimizer.optimize()
             x_max = forward_normalize(torch.tensor([final_params[0].to_list()]), self.mins_x, self.maxs_x)
@@ -376,12 +340,9 @@ class DynamicSSPlanner(BasePlanner):
             # Compute the maximum regret
             X_init_temp = self.train_x_scaled_reg.numpy().tolist()
             batch_size = len(X_init_temp)
-            #y_acq = np.zeros(len(self.train_x_scaled_reg))
-            #y_acq = self.ucbacqf(torch.reshape(self.train_x_scaled_reg, (batch_size,1,self.input_dim))).detach().numpy()
             X_init_temp.append(x_max.flatten().tolist())
             Y_lcb_temp = self.lcbacqf(torch.reshape(self.train_x_scaled_reg, (batch_size,1,self.input_dim))).detach().numpy()
             regret = max_acq - np.max(Y_lcb_temp)
-            self.regret_iter.append(regret)
             print('Regret: {}'.format(regret))
 
             # Check if regret < 0, redo the optimization, typically redo the optimization
@@ -407,38 +368,85 @@ class DynamicSSPlanner(BasePlanner):
                 print(final_params)
                 print('Regret: {}'.format(regret))
             
-            
-
             # Expand if regret < epsilon or the first iteration
 
             if self.compute_expansion_trigger(regret, n_iter):
                 print('Expanding bounds')
-                #Y = (self.train_y_scaled_reg.numpy()-np.mean(self.train_y_scaled_reg.numpy()))/(np.max(self.train_y_scaled_reg.numpy())-np.min(self.train_y_scaled_reg.numpy()))
 
-                X = reverse_normalize(self.train_x_scaled_reg, self.mins_x, self.maxs_x)
-                X, Y = self.build_train_data_custom()
+                #train temp model using only expandable dims to expand the search space
 
-                K = self.gram_matrix(X, 1, kernel_k2)
+                temp_reg_model = self.build_train_regression_gp(self.train_x_scaled_reg[:, self.expandable_dims], self.train_y_scaled_reg)
+                kernel_k1 = temp_reg_model.covar_module.outputscale.detach().numpy().item()
+                theta_n = np.sqrt(kernel_k1)
+                kernel_k2 = temp_reg_model.covar_module.base_kernel.lengthscale.detach().numpy().item()
+                K = self.gram_matrix(self.train_x_scaled_reg[:, self.expandable_dims], kernel_k1, kernel_k2)
+                scale_l= self.compute_new_search_space2(K, self.train_y_scaled_reg.numpy(), b_n, theta_n, kernel_k1)
 
-            
-                bounds, scale_l, self.bound_len, n_iter= self.compute_new_search_space(K, Y, X, b_n, theta_n, kernel_k1, kernel_k2, acq_init, n_iter, bounds)
                 
+                lengthscale = kernel_k2
+                thetan_2 = kernel_k1
+                radius = np.abs(np.max(bounds[:, 1]-bounds[:, 0]))
+                b = 1/2*np.sqrt(2)*np.sqrt(thetan_2)/lengthscale
+                a = 1
+
+                mini_dim = len(self.expandable_dims)
+                tau_n = (4*mini_dim+4)*np.log(n_iter) + 2*np.log(2*np.pi**2/(3*self.sigma)) \
+                        + 2*mini_dim*np.log(mini_dim*b*radius*np.sqrt(np.log(4*mini_dim*a/self.sigma)))
+                b_n = np.sqrt(np.abs(self.nu*tau_n))
+
+                f_preds = temp_reg_model(self.train_x_scaled_reg[:, self.expandable_dims])
+                y_init_mean, y_init_std = f_preds.mean.detach().numpy(), f_preds.variance.detach().numpy()
+                acq_init = y_init_mean.ravel() + b_n*y_init_std.ravel()
+
+                X = reverse_normalize(self.train_x_scaled_reg, self.mins_x, self.maxs_x).numpy()
+
+                bounds_ori_all = []
+                for n_obs in range(len(acq_init)):
+                    X0 = X[n_obs]
+                    # Set the rectangle bounds
+                    bounds_ori_temp = np.asarray((X0 - scale_l*kernel_k2,
+                                                    X0 + scale_l*kernel_k2))
+                    bounds_ori = bounds_ori_temp.T
+                    bounds_ori_all.append(bounds_ori)
+
+                self.bound_len = scale_l*kernel_k2
+                temp = np.asarray(bounds_ori_all)
+                temp_min = np.min(temp[:, :, 0], axis=0)
+                temp_max = np.max(temp[:, :, 1], axis=0)
+
+                expanded_bounds = np.stack((temp_min, temp_max)).T
 
 
-                # Re-optimize the acquisition function with the new bound
+                bounds_new = bounds.copy()
+                for index in self.expandable_dims:
+                    bounds_new[index,:] = expanded_bounds[index,:]
+
+                
+                print('New bound: {}'.format(bounds_new))
+
+
+                new_func_parameter_space = ParameterSpace()
+                param_names = self.func_param_space.param_names
+
+                for idx in range(self.input_dim):
+                    new_func_parameter_space.add(
+                        ParameterContinuous(
+                            name=param_names[idx],
+                            low = bounds_new[idx][0],
+                            high = bounds_new[idx][1]
+                        )
+                    )
+                    
+                self.func_param_space = new_func_parameter_space
+
+                self.iter_adjust += (n_iter - 1)
+                
+                # Re-optimize the acquisition function with the new bounds, 
                 # and the new b_n
                 n_iter = self.n_iter_i - self.iter_adjust 
-
-
-                raw_outputscale =self.reg_model.covar_module.raw_outputscale
-                raw_lengthscale = self.reg_model.covar_module.base_kernel.raw_lengthscale
-                outputscale_constraint = self.reg_model.covar_module.raw_outputscale_constraint
-                ls_constraint = self.reg_model.covar_module.base_kernel.raw_lengthscale_constraint
-
-                thetan_2 = outputscale_constraint.transform(raw_outputscale).item()
-                lengthscale = np.float64(ls_constraint.transform(raw_lengthscale).item())
-
-                radius = np.abs(np.max(bounds[:, 1]-bounds[:, 0]))
+                lengthscale = self.reg_model.covar_module.base_kernel.lengthscale.detach().numpy().item()
+                thetan_2 = self.reg_model.covar_module.outputscale.detach().numpy().item()
+                radius = np.abs(np.max(bounds_new[:, 1]-bounds_new[:, 0]))
                 b = 1/2*np.sqrt(2)*np.sqrt(thetan_2)/lengthscale
                 a = 1
                 tau_n = (4*self.input_dim+4)*np.log(n_iter) + 2*np.log(2*np.pi**2/(3*self.sigma)) \
@@ -490,22 +498,16 @@ class DynamicSSPlanner(BasePlanner):
 
                     )
                 acquisition_optimizer.param_space = self.func_param_space
-            
                 final_params = acquisition_optimizer.optimize()
-                print("FINAL PARAMS:")
-                print(final_params)
                 x_max = forward_normalize(torch.tensor([final_params[0].to_list()]), self.mins_x, self.maxs_x)
                 max_acq = self.ucbacqf(x_max)
 
-                y_acq = np.zeros(len(self.train_x_scaled_reg))
-
                 # Save some parameters of the bound
+                X, Y = self.build_train_data_custom()
                 X_init_bound = X
                 Y_bound = np.copy(Y)
-                lengthscale_bound = lengthscale = np.float64(self.reg_model.covar_module.base_kernel.raw_lengthscale.item())
-                scale_l_bound = scale_l
+
             
-        
             # Check if the acquistion function argmax is at infinity
             # Then re-optimize within the bound that has the largest Y value
             if ((max_acq - b_n*np.sqrt(thetan_2)) >= -self.epsilon) & ((max_acq - b_n*np.sqrt(thetan_2)) <= 0):
@@ -529,94 +531,8 @@ class DynamicSSPlanner(BasePlanner):
         self.n_iter_i +=1
             
         return final_params
-
-
+        
     def build_train_regression_gp(
-        self, train_x: torch.Tensor, train_y: torch.Tensor
-    ) -> gpytorch.models.ExactGP:
-
-        """Build the regression GP model and likelihood"""
-        # infer the model based on the parameter types, do multi-start as in the paper
-        
-        if self.problem_type in [
-            "fully_continuous",
-            "fully_discrete",
-            "mixed_disc_cont",
-        ]:
-            ls_prior = [0.001, 0.01, 0.1, 1, 10, 100, 1000]
-            ml_value = np.zeros(len(ls_prior))
-            gp_temp = []
-          
-            flattened_train_y = torch.flatten(train_y)
-        
-
-            for idx, ls in enumerate(ls_prior):
-
-                rbfkernel = RBFKernel()
-                scaled_rbf_kernel = ScaleKernel(rbfkernel)
-                #scaled_rbf_kernel = ScaleKernel(rbfkernel, outputscale_constraint=Interval(lower_bound=0.1, upper_bound=100000))
-
-                
-                model = SingleTaskGP(train_x, train_y, covar_module=scaled_rbf_kernel)
-                model.covar_module.base_kernel.lengthscale = ls
-                model.covar_module.outputscale = 1
-
-                kernel_k1 = model.covar_module.outputscale.detach().numpy().item()
-                lengthscale = model.covar_module.base_kernel.lengthscale.detach().numpy().item()
-                #print(f"kernel k1 before opt:{kernel_k1}")
-                #print(f"lengthscale before opt:{lengthscale}")
-
-                mll = ExactMarginalLogLikelihood(model.likelihood, model)
-
-                mll.train()
-                model.train()
-                
-                # fit the GP
-                start_time = time.time()
-                with gpytorch.settings.cholesky_jitter(self.max_jitter):
-                    fit_gpytorch_scipy(mll)
-                gp_train_time = time.time() - start_time
-                # Logger.log(
-                #     f"Regression surrogate GP trained in {round(gp_train_time,3)} sec using {ls} as a lengthscale prior",
-                #     "INFO",
-                # )
-
-                # kernel_k1 = model.covar_module.outputscale.detach().numpy().item()
-                # lengthscale = model.covar_module.base_kernel.lengthscale.detach().numpy().item()
-                # #print(f"kernel k1 after opt:{kernel_k1}")
-                # #print(f"lengthscale after opt:{lengthscale}")
-                # #print()
-
-                model.eval()
-                model.eval()
-
-                output = model(train_x)
-                loss = mll(output, flattened_train_y)
-                ml_value[idx] = loss.detach().numpy().item()
-                
-                gp_temp.append(model)
-
-                #print(ml_value)
-        
-
-            gp = gp_temp[np.min(np.argmax(ml_value))]
-
-            return gp
-
-        
-        elif self.problem_type == "fully_categorical":
-            if self.has_descriptors:
-                raise NotImplementedError
-            else:
-                raise NotImplementedError
-        elif "mixed_cat_" in self.problem_type:
-            raise NotImplementedError
-        else:
-            raise NotImplementedError
-
-        return model
-    
-    def build_train_regression_gp2(
         self, train_x: torch.Tensor, train_y: torch.Tensor
     ) -> gpytorch.models.ExactGP:
 
@@ -657,6 +573,30 @@ class DynamicSSPlanner(BasePlanner):
         if (regret <= self.epsilon - 1/n_iter**2) | (self.n_iter_i == 1):
             return True
         return False
+
+    def compute_new_search_space2(self, k, y, b_n, theta_n, kernel_k1):
+
+        K_inv = pinv(k)
+        b = np.matmul(K_inv, y)
+        b_pos = b[b >= 0]
+        b_neg = b[b <= 0]
+        U, Sigma, V = np.linalg.svd(K_inv)
+        lambda_max = np.max(Sigma)
+        n = self.train_x_scaled_reg.size(dim=0)
+    
+        gamma = min(0.25*self.epsilon/max(np.sum(b_pos), -np.sum(b_neg)),
+                    1/b_n*np.sqrt((0.5*self.epsilon*b_n*theta_n-0.0625*self.epsilon**2)/(n*lambda_max)))
+
+        if (gamma > 1):
+            raise ValueError('Gamma needs to be smaller than 1. Something wrong!')
+        
+        scale_l = np.sqrt(-2*np.log(gamma/kernel_k1))
+
+        if np.isnan(scale_l):
+            scale_l = 2
+        print('The scale is: {}'.format(scale_l))
+
+        return scale_l
     
     def compute_new_search_space(self, k, y, x, b_n, theta_n, kernel_k1, kernel_k2, aq_init, n_iter, bounds):
 
@@ -667,9 +607,6 @@ class DynamicSSPlanner(BasePlanner):
         U, Sigma, V = np.linalg.svd(K_inv)
         lambda_max = np.max(Sigma)
         n = self.train_x_scaled_reg.size(dim=0)
-
-        
-        #print(f"theta N (scale factor):  {theta_n}")
     
     
         gamma = min(0.25*self.epsilon/max(np.sum(b_pos), -np.sum(b_neg)),
@@ -721,8 +658,6 @@ class DynamicSSPlanner(BasePlanner):
                     high = bounds_new[idx][1]
                 )
             )
-
-        self.bounds_iter.append(self.func_param_space)
         self.func_param_space = new_func_parameter_space
 
 
@@ -792,8 +727,6 @@ class DynamicSSPlanner(BasePlanner):
     ): 
 
         self.param_space = super_param_space
-
-        self.bounds_iter.append(self.func_param_space)
         self.func_param_space = func_param_space
 
         return
@@ -997,13 +930,3 @@ class DynamicSSPlanner(BasePlanner):
 
 
     
-    
-'''
-raw_outputscale =self.reg_model.covar_module.raw_outputscale
-constraint = self.reg_model.covar_module.raw_outputscale_constraint
-kernel_k1 = constraint.transform(raw_outputscale).item()
-
-lengthscale = np.float64(self.reg_model.covar_module.base_kernel.raw_lengthscale.item())
-thetan_2 = kernel_k1
-
-'''

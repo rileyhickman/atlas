@@ -94,8 +94,8 @@ MODELS = [
 ]
 
 PLOTPATH: pathlib.Path = "/Users/maozer/VSCodeProjects/atlas/examples/dynamic_search_space/plots"
-NUM_RUNS = 1 #max_exp- the max number of experiments
-BUDGET = 15 #max_iter- the max number of evaluations per experiment
+NUM_RUNS = 30 #max_exp- the max number of experiments
+BUDGET = 39 #max_iter- the max number of evaluations per experiment
 model_kind = "Dynamic"
 
 
