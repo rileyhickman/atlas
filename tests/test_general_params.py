@@ -102,7 +102,7 @@ def test_general_cat(batch_size, use_descriptors):
         batch_size=batch_size,
         use_descriptors=use_descriptors,
         acquisition_type='general',
-        acquisition_optimizer_kind='gradient',
+        acquisition_optimizer_kind='genetic',
         general_parameters=[0],
         
     )
