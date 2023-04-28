@@ -596,7 +596,6 @@ class GeneticOptimizer(AcquisitionOptimizer):
         for i, param in enumerate(self.param_space):
             param_type = param["type"]
 
-
             if param_type == "continuous":
                 if np.random.random() < indpb:
                     # Gaussian perturbation with scale being 0.1 of domain range
