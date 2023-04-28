@@ -235,14 +235,19 @@ class FeasibilityAwareGeneral(
 
         self.X_sns_empty, _ = self.generate_X_sns()
         self.functional_dims = np.logical_not(self.params_obj.exp_general_mask)
+        
 
     def forward(self, X):
+
         X = X.double()
         best_f = self.best_f.to(X)
 
+        # shape (# samples, # exp general dims, # batch size, # exp param dims)
         X_sns = torch.empty((X.shape[0],) + self.X_sns_empty.shape).double()
+
         for x_ix in range(X.shape[0]):
             X_sn = torch.clone(self.X_sns_empty)
+            #X_sn[:, :, self.functional_dims] = X[x_ix, :] #X[x_ix, :, self.functional_dims]
             X_sn[:, :, self.functional_dims] = X[x_ix, :, self.functional_dims]
             X_sns[x_ix, :, :, :] = X_sn
 

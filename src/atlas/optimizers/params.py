@@ -97,13 +97,21 @@ class Parameters():
 
 	@property
 	def general_mask(self):
-		# TODO: implement this
 		return [True if ix in self.general_dims else False for ix in range(len(self.param_space))]
 
 	@property
 	def exp_general_mask(self):
-		# TODO: implement this
 		return [True if ix in self.exp_general_dims else False for ix in range(self.expanded_raw.shape[1])]
+	
+	@property
+	def functional_dims(self):
+		return [ix for ix in range(len(self.param_space)) if ix not in self.general_dims]
+	
+	@property
+	def exp_functional_dims(self):
+		return [ix for ix in range(self.expanded_raw.shape[1]) if ix not in self.exp_general_dims]
+	
+
 
 	@property
 	def cont_dims(self):

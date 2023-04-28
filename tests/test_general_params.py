@@ -84,7 +84,7 @@ def test_general_cat(batch_size, use_descriptors):
         ParameterCategorical(
             name='s',
             options=[str(i) for i in range(3)],
-            descriptors=[[i,i] for i in range(3)],   
+            descriptors=[[float(i),float(i)] for i in range(3)],   
         )
     )
     # functional parameters
@@ -102,7 +102,7 @@ def test_general_cat(batch_size, use_descriptors):
         batch_size=batch_size,
         use_descriptors=use_descriptors,
         acquisition_type='general',
-        acquisition_optimizer_kind='gradient',
+        acquisition_optimizer_kind='genetic',
         general_parameters=[0],
         
     )
@@ -276,4 +276,4 @@ if __name__ == '__main__':
     #test_general_disc(batch_size=1)    
     #test_general_cat_moo(batch_size=1, use_descriptors=False)
 
-    test_general_cat(batch_size=1, use_descriptors=False)
+    test_general_cat(batch_size=1, use_descriptors=True)

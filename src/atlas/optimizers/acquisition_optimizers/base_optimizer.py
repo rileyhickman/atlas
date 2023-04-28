@@ -70,6 +70,7 @@ class AcquisitionOptimizer:
         results = self._optimize()
         self.timings_dict['acquisition_opt'] = time.time()-start_time
 
+
         # if we have a general parameter optimization, we use a
         # variance-based sampling procedure to select the next general parameter(s)
         if self.acquisition_type == 'general':
@@ -100,6 +101,7 @@ class AcquisitionOptimizer:
 
                 for gen_param_ix in self.params_obj.general_dims:
                     results[ix][self.params_obj.param_space[gen_param_ix].name] = select_gen_params[gen_param_ix]
+
 
         return results
 

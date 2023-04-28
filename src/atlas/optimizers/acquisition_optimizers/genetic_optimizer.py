@@ -315,16 +315,11 @@ class GeneticOptimizer(AcquisitionOptimizer):
         best_idxs = np.argsort(acqf_vals)[:self.batch_size]
         best_batch_pop = np.array(population)[best_idxs]
 
-        # print(np.array(population)[:10])
-        # print(best_batch_pop[:10])
-        # print(acqf_vals[:10])
-        # print(np.array(acqf_vals)[best_idxs])
-
-        # TODO: this is pretty hacky...
-        # Does this re-normalize things??
+        # TODO: this bit is pretty hacky...
         best_batch_pop_deindex = self.deindexify(best_batch_pop)
-
-        best_batch_pop_deindex = reverse_normalize(best_batch_pop_deindex,self.params_obj._mins_x,self.params_obj._maxs_x)
+        best_batch_pop_deindex = reverse_normalize(
+            best_batch_pop_deindex,self.params_obj._mins_x,self.params_obj._maxs_x,
+        )
 
         best_batch = []
         for best_index, best_deindex in zip(best_batch_pop,best_batch_pop_deindex):
@@ -332,10 +327,18 @@ class GeneticOptimizer(AcquisitionOptimizer):
             counter = 0
             for elem, p in zip(best_index, self.param_space):
                 if p.type=='continuous':
-                    sample.append(best_deindex[counter])
+                    sample.append(
+                        _project_bounds(
+                            best_deindex[counter], p.low, p.high,
+                        )
+                    )
                     counter+=1
                 elif p.type == 'discrete':
-                    sample.append(best_deindex[counter])
+                    sample.append(
+                        _project_bounds(
+                            best_deindex[counter], p.low, p.high,
+                        )
+                    )
                     counter+=1
                 elif p.type == 'categorical':
                     sample.append(elem)
@@ -588,22 +591,25 @@ class GeneticOptimizer(AcquisitionOptimizer):
 
         assert len(individual) == len(self.param_space)
 
+        bounds_ix = 0
+
         for i, param in enumerate(self.param_space):
             param_type = param["type"]
 
-            # determine whether we are performing a mutation
-            if np.random.random() < indpb:
 
-                if param_type == "continuous":
+            if param_type == "continuous":
+                if np.random.random() < indpb:
                     # Gaussian perturbation with scale being 0.1 of domain range
-                    bound_low = self.bounds[0,i]
-                    bound_high = self.bounds[1,i]
+                    bound_low = self.bounds[0,bounds_ix]
+                    bound_high = self.bounds[1,bounds_ix]
                     scale = (bound_high - bound_low) * continuous_scale
                     individual[i] += np.random.normal(loc=0.0, scale=scale)
                     individual[i] = _project_bounds(
                         individual[i], bound_low, bound_high
                     )
-                elif param_type == "discrete":
+                bounds_ix+=1
+            elif param_type == "discrete":
+                if np.random.random() < indpb:
                     # add/substract an integer by rounding Gaussian perturbation
                     #scale is 0.1 of domain range
                     bound_low = 0
@@ -619,8 +625,10 @@ class GeneticOptimizer(AcquisitionOptimizer):
                     individual[i] = _project_bounds(
                         individual[i], bound_low, bound_high
                     )
+                bounds_ix+=1
 
-                elif param_type == "categorical":
+            elif param_type == "categorical":
+                if np.random.random() < indpb:
                     # resample a random category
                     num_options = float(
                         self.param_ranges[i]
@@ -628,10 +636,13 @@ class GeneticOptimizer(AcquisitionOptimizer):
                     individual[i] = np.random.choice(
                         list(np.arange(num_options))
                     )
+                if not self.params_obj.has_descriptors:
+                    bounds_ix += len(self.param_space[i].options)
                 else:
-                    raise ValueError()
+                    bounds_ix += len(self.param_space[i].descriptors[0])
             else:
-                continue
+                raise ValueError()
+            
 
         return (individual,)
 
@@ -650,6 +661,7 @@ def _project_bounds(x, x_low, x_high):
         return x_high
     else:
         return x
+    
 
 
 def param_vectors_to_deap_population(param_vectors):

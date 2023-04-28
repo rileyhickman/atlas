@@ -79,20 +79,35 @@ class GradientOptimizer(AcquisitionOptimizer):
     def _optimize(self):
 
         best_idx = None  # only needed for the fully categorical case
-        if self.problem_type == "fully_continuous":
-            results = self._optimize_fully_continuous()
-        elif self.problem_type in [
-            "mixed_cat_cont",
-            "mixed_disc_cont",
-            "mixed_cat_disc_cont",
-        ]:
-            results, best_idx = self._optimize_mixed()
-        elif self.problem_type in [
-            "fully_categorical",
-            "fully_discrete",
-            "mixed_cat_disc",
-        ]:
-            results, best_idx = self._optimize_fully_categorical()
+
+        if self.acquisition_type == 'general': 
+            func_dims = self.params_obj.functional_dims
+            exp_func_dims = self.params_obj.exp_functional_dims
+
+            # check to see if all functional parameters are continuous
+            if all([self.param_space[ix].type=='continuous' for ix in func_dims]):
+                results = self._optimize_mixed_general()
+
+            else:
+                msg = 'This is not yet implemented. Try again later!'
+                Logger.log(msg, 'FATAL')
+
+        else:   
+
+            if self.problem_type == "fully_continuous":
+                results = self._optimize_fully_continuous()
+            elif self.problem_type in [
+                "mixed_cat_cont",
+                "mixed_disc_cont",
+                "mixed_cat_disc_cont",
+            ]:
+                results, best_idx = self._optimize_mixed()
+            elif self.problem_type in [
+                "fully_categorical",
+                "fully_discrete",
+                "mixed_cat_disc",
+            ]:
+                results, best_idx = self._optimize_fully_categorical()
 
         return self.postprocess_results(results, best_idx)
 
@@ -160,6 +175,43 @@ class GradientOptimizer(AcquisitionOptimizer):
         )
 
         return results, best_idx
+
+
+    def _optimize_mixed_general(self):
+        """ function to optimize general acquisition function if we have all 
+        continuous non-general/functional parameters
+        """
+        functional_mask = np.logical_not(self.params_obj.exp_general_mask)
+        
+        func_bounds = self.bounds[:, functional_mask]
+
+        (
+            nonlinear_inequality_constraints,
+            batch_initial_conditions,
+            _
+        ) = self.gen_initial_conditions(num_restarts=30)
+
+        func_batch_initial_conditions = batch_initial_conditions[:,:,functional_mask]
+
+        # optimize using gradients only over the functional parameter dimensions
+        results, _ = optimize_acqf(
+            acq_function=self.acqf,
+            num_restarts=10,
+            bounds=func_bounds,
+            q=self.batch_size,
+            nonlinear_inequality_constraints=nonlinear_inequality_constraints,
+            batch_initial_conditions=func_batch_initial_conditions,
+        )
+
+        # add back on the general dimension(s) - always use the first option (this will later be 
+        # replaced and does not matter)
+        X_sns = torch.empty((self.batch_size, self.params_obj.expanded_dims)).double()
+        for ix, result in enumerate(results):
+            X_sns[ix, functional_mask] = result
+            X_sns[ix, self.params_obj.exp_general_mask] = torch.tensor(batch_initial_conditions[0, 0, self.params_obj.exp_general_mask])
+
+        return X_sns
+        
 
     def _optimize_fully_categorical(self):
         # need to implement the choices input, which is a
@@ -428,7 +480,10 @@ class GradientOptimizer(AcquisitionOptimizer):
                 if self.problem_type == "fully_continuous":
                     cat_choice = None
                 else:
-                    cat_choice = self.choices_cat[best_idx[sample_idx]]
+                    if self.acquisition_type=='general':
+                        cat_choice = self.param_space[self.params_obj.general_dims[0]].options[0]
+                    else:
+                        cat_choice = self.choices_cat[best_idx[sample_idx]]
 
                 olymp_sample = {}
                 idx_counter = 0
