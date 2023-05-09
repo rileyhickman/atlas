@@ -34,47 +34,76 @@ from atlas.optimizers.utils import (
 )
 
 
-class GeneticGeneralOptimizer():
+class GeneticGeneralOptimizer(AcquisitionOptimizer):
 	def __init__(
 		self,
-		S,
-		max_Ng,
-		surf_map, # assume all surfaces in S have the same param space
-		params_obj, 
-		num_init_evals=int(1e3),
+		params_obj: Parameters,
+		acquisition_type: str,
+		acqf, # needs to be instance of MedusaAcquisiton
+		known_constraints: Callable,
+		batch_size: int,
+		feas_strategy: str,
+		fca_constraint: Callable,
+		params: torch.Tensor,
+		timings_dict: Dict,
+		max_Ng: int,
+		func_param_space, 
+		num_init_evals:int=int(1e3), # number of inital evals for GA
+		
 		**kwargs: Any, 
 	):
 		local_args = {
 			key: val for key, val in locals().items() if key != "self"
 		}
-		self.S = S
 		self.max_Ng = max_Ng
-		self.surf_map = surf_map
 		self.num_init_evals = num_init_evals
 
 		self.params_obj = params_obj
 		self.param_space = self.params_obj.param_space
 		self.problem_type = infer_problem_type(self.param_space)
 		self.bounds = self.params_obj.bounds
+		self.batch_size = batch_size
+		self.acqf = acqf
+		self.timings_dict = timings_dict
+		self.acquisition_type = acquisition_type
+		
+
+		self.func_param_space = func_param_space
+		self.func_problem_type = infer_problem_type(self.func_param_space)
 
 		self.param_space_dim = len(self.param_space)
+		self.func_param_space_dim = len(self.func_param_space)
+
+		self.functional_dims = np.logical_not(self.params_obj.exp_general_mask)
 
 		# range of opt domain dimensions for deap 
 		self.param_ranges = self._get_param_ranges()
 
+		# parameter space indices that are general parameters
+		self.general_parameters = self.params_obj.general_dims
+
+
+
+	#------------------------
+	# PROPERTIES AND HELPERS
+	#------------------------
+
+	@property
+	def S(self):
+		""" indices of general params """
+		return [i for i in range(self.num_S)]
 
 	@property
 	def num_S(self):
-		return len(self.S)
+		"""number of non-functional parameter options """
+		S_count = 0
+		for param_ix in self.general_parameters:
+			S_count+=len(self.param_space[param_ix].options)
+		return S_count
  
 	@staticmethod
 	def _dummy_get_bounds(param_space):
 		...
-	
-	@staticmethod
-	def measure_single_obj(X_func, si, surf_map):
-
-		return surf_map[si].run(X_func)[0][0]
 	
 	@staticmethod
 	def _project_bounds(x, x_low, x_high):
@@ -100,35 +129,24 @@ class GeneticGeneralOptimizer():
 			population.append(ind)
 		return population
 
+	def _wrapped_fca_constraint(self, params):
+		# >= 0 is a feasible point --> True
+		# < 0 is an infeasible point --> False
+		# transform dictionary rep of x to expanded format
+		expanded = self.params_obj.param_vectors_to_expanded(
+			[ParameterVector().from_dict(params,self.param_space)],
+			is_scaled=True,
+			return_scaled=False # should already be scaled
+		)
+		val = self.fca_constraint(
+			torch.tensor(expanded).view(expanded.shape[0], 1, expanded.shape[1])
+		).detach().numpy()[0][0]
 
-	def dummy_evaluate(self, individual):
-		return np.random.uniform(),
-
-	def __OLD_evaluate(self, individual):
-
-		G = individual['G']
-		X_func = individual['X_func']
-		f_x = 0.
-		for g_ix, Sg in enumerate(G):
-			f_xg = 0.
-			for si in Sg:
-				f_xg += self.measure_single_obj(X_func[g_ix], si, self.surf_map)
-			f_x += f_xg / len(Sg)
-
-		return f_x,
-
-	def evaluate(self, individual):
-
-		G = individual['G']
-		X_func = individual['X_func']
-		f_x = 0.
-		for g_ix, Sg in enumerate(G):
-			for si in Sg:
-				f_x += self.measure_single_obj(X_func[g_ix], si, self.surf_map)
-
-		return f_x, 
-
-
+		if val >= 0:
+			return True
+		else:
+			return False
+		
 	def _get_param_ranges(self):
 		param_ranges = []
 		counter = 0
@@ -146,7 +164,103 @@ class GeneticGeneralOptimizer():
 				else:
 					counter+=len(param.options)
 		return np.array(param_ranges)
+
+	def indexify(self):
+		samples = []
+		counter = 0
+		for cond, cond_raw in zip(self.batch_initial_conditions, self.raw_conditions):
+			sample = []
+			counter = 0
+			for elem, p in zip(cond_raw, self.func_param_space):
+				if p.type == 'continuous':
+					sample.append(float(cond[counter]))
+					counter+=1
+				elif p.type == 'discrete':
+					sample.append(float(p.options.index(float(elem))))
+					counter+=1
+				elif p.type == 'categorical':
+					sample.append(float(p.options.index(elem)))
+					if self.has_descriptors:
+						counter+=len(p.descriptors[0])
+					else:
+						counter+=len(p.options)
+			samples.append(sample)
+		return np.array(samples)
+
+	def deindexify(self, x):
+		samples = []
+		for x_ in x:
+			sample = []
+			counter = 0
+			for elem, p in zip(x_, self.func_param_space):
+
+				if p.type == 'continuous':
+					sample.append(float(elem))
+					counter+=1
+				elif p.type == 'discrete':
+					sample.append(float(p.options[int(elem)]))
+					counter+=1
+				elif p.type == 'categorical':
+					sample.extend(
+						cat_param_to_feat(
+							p, p.options[int(elem)], self.params_obj.has_descriptors,
+						)
+					)
+			samples.append(sample)
+		return np.array(samples)
+
+
+	#-------------
+	# EVALUATION
+	#-------------
+
+	def dummy_evaluate(self, individual):
+		return np.random.uniform(),
+
+	# TODO: outdated
+	@staticmethod
+	def measure_single_obj(X_func, si, surf_map):
+		return surf_map[si].run(X_func)[0][0]
+
+	# TODO: outdated
+	def __OLD_evaluate(self, individual):
+
+		G = individual['G']
+		X_func = individual['X_func']
+		f_x = 0.
+		for g_ix, Sg in enumerate(G):
+			for si in Sg:
+				f_x += self.measure_single_obj(X_func[g_ix], si, self.surf_map)
+
+		return f_x, 
+
+	def acquisition(self, individual: Dict) -> Tuple:
+		# print(individual)
+		G = individual['G']
+		X_func = np.array(individual['X_func'])
+		# print('type G : ', type(G))
+		# print('type X_func : ',type(X_func))
+		# print('shape X_func : ', X_func.shape)
+
+		# de-indexify X_func only before calling the acquisition function
+		X_func = self.deindexify(X_func)
+
+
+		# print('deindex X_func shape : ', X_func.shape)
+		# print('deindex X_func : ', X_func)
+
+		# NOTE: dont need to make this a torch tensor yet ... 
+		# X_func = torch.tensor(
+		# 	X_func.reshape((1, self.batch_size, X_func.shape[1]))
+		# )
+		# return the negative of the acqf - this is conventionally minimized by
+		# deap, but we want to maximize acqf
+		return -self.acqf(X_func=X_func, G=G).detach().numpy(),
 	
+
+	#----------------------------
+	# POPULATION INITIALIZATION
+	#----------------------------
 
 	def init_population_best(self, num_inds, max_partitions=20):
 		f_xs = []
@@ -161,15 +275,21 @@ class GeneticGeneralOptimizer():
 			X_funcs = []
 			for _ in range(Ng):
 
+				# produce the proposals for the functional parameter space only (X_func)
 				proposals, raw_proposals = propose_randomly(
 					num_proposals=self.num_init_evals, 
-					param_space=self.param_space,
+					param_space=self.func_param_space,
 					has_descriptors=self.params_obj.has_descriptors,
 				)
-				if self.problem_type == 'fully_categorical':
+				# print('proposals : ', proposals)
+				# print('')
+				# print('raw_proposals : ', raw_proposals )
+				# quit()
+
+				if self.func_problem_type == 'fully_categorical':
 					# use raw proposals (string reps) for fully categorical
 					X_funcs.append(raw_proposals)
-				elif self.problem_type == 'fully_continuous': 
+				elif self.func_problem_type == 'fully_continuous': 
 					X_funcs.append(proposals)
 				else:
 					print('SOMETHING IS WRONG')
@@ -178,10 +298,11 @@ class GeneticGeneralOptimizer():
 			X_funcs = np.array(X_funcs).swapaxes(0,1)
 			for X_func in X_funcs:
 				dict_ = {'G': G, 'X_func': list([list(X) for X in X_func]), 'Ng': Ng}
-				dict_['f_x'] = self.evaluate(dict_)[0]
+				dict_['f_x'] = self.acquisition(dict_)[0]
 				f_xs.append(dict_)
 
 		vals = [d['f_x'] for d in f_xs]
+		
 		assert len(vals) > num_inds
 		sort_idx = np.argsort(vals)[:num_inds]
 		pop = [creator.Individual(f_xs[idx]) for idx in sort_idx]
@@ -203,13 +324,13 @@ class GeneticGeneralOptimizer():
 
 				proposals, raw_proposals = propose_randomly(
 					num_proposals=self.num_init_evals, 
-					param_space=self.param_space,
+					param_space=self.func_param_space,
 					has_descriptors=self.params_obj.has_descriptors,
 				)
-				if self.problem_type == 'fully_categorical':
+				if self.func_problem_type == 'fully_categorical':
 					# use raw proposals (string reps) for fully categorical
 					X_funcs.append(raw_proposals)
-				elif self.problem_type == 'fully_continuous': 
+				elif self.func_problem_type == 'fully_continuous': 
 					X_funcs.append(proposals)
 				else:
 					print('SOMETHING IS WRONG')
@@ -225,6 +346,10 @@ class GeneticGeneralOptimizer():
 
 		return pop
 	
+
+	#------------------
+	# CUSTOM MUTATIONS
+	#------------------
 
 	def custom_mutate_G(self, ind):
 		""" mutate non-functional param assignments G
@@ -344,11 +469,11 @@ class GeneticGeneralOptimizer():
 		# perform a Gaussian mutation
 		for X_func_ix in range(len(ind['X_func'])):
 			# TODO: could add another probability here...
-			for param_ix in range(self.param_space_dim):
+			for param_ix in range(self.func_param_space_dim):
 
 				if np.random.uniform() < indpb:
 
-					param_type = self.param_space[param_ix].type
+					param_type = self.func_param_space[param_ix].type
 					
 					if param_type == 'continuous':
 						# Gaussian perturbation
@@ -363,7 +488,7 @@ class GeneticGeneralOptimizer():
 					elif param_type == 'discrete':
 						# add/substract an integer by rounding Gaussian perturbation
 						bound_low = 0
-						bound_high = len(self.param_space[param_ix].options)-1
+						bound_high = len(self.func_param_space[param_ix].options)-1
 						# if we have very few discrete variables, just move +/- 1
 						if bound_high-bound_low < 10:
 							delta = np.random.choice([-1, 1])
@@ -377,7 +502,7 @@ class GeneticGeneralOptimizer():
 						)
 						
 					elif param_type == 'categorical':
-						options = self.param_space[param_ix].options
+						options = self.func_param_space[param_ix].options
 						#num_options = float(self.param_ranges[param_ix]) # float so arnage returns doubles
 
 						ind['X_func'][X_func_ix][param_ix] = np.random.choice(options)
@@ -389,16 +514,63 @@ class GeneticGeneralOptimizer():
 		return ind
 
 
-	def optimize(
-			self, 
-			num_inds,
-			num_gen,
+	#-----------
+	# EVOLUTION
+	#-----------
+
+	@staticmethod
+	def _evolution(
+			population, 
+			toolbox, 
+			halloffame,
 			mutate_G_pb, 
 			mutate_X_func_pb,
 			mutate_X_func_indpb,
-			halloffame_frac,
-			use_best_init_pop=True, 
-			show_progress=True, 
+		):
+
+		# size of hall of fame
+		hof_size = len(halloffame.items) if halloffame.items else 0
+		# Select the next generation individuals (allow for elitism)
+		offspring = toolbox.select(population, len(population) - hof_size)
+		# Clone the selected individuals
+		offspring = list(map(toolbox.clone, offspring))
+		
+		for mutant in offspring:
+			# mutation on G
+			if np.random.uniform() < mutate_G_pb:
+				toolbox.mutate_G(mutant)
+				# if G is mutated, mutate X_func immediately
+				toolbox.mutate_X_func(mutant, indpb=mutate_X_func_indpb) 
+				del mutant.fitness.values
+		
+		# option for extra mutation on X_func
+		for mutant in offspring:
+			# mutation on X_func
+			if np.random.uniform() < mutate_X_func_pb:
+				toolbox.mutate_X_func(mutant, indpb=mutate_X_func_indpb)
+				del mutant.fitness.values
+
+		return offspring
+
+
+
+	# TODO: implement constrained evolution method for medusa....
+
+
+	#-------------------
+	# MAIN OPTIMIZATION
+	#-------------------
+
+	def _optimize(
+			self, 
+			num_inds:int=100,
+			num_gen:int=100,
+			mutate_G_pb:float=0.25, 
+			mutate_X_func_pb:float=0.25,
+			mutate_X_func_indpb:float=0.25,
+			halloffame_frac:float=0.1,
+			use_best_init_pop:bool=False, 
+			show_progress:bool=True, 
 	):
 		
 		creator.create('FitnessMin', base.Fitness, weights=(-1.0,)) 
@@ -412,7 +584,7 @@ class GeneticGeneralOptimizer():
 			# use random intial population
 			toolbox.register('population', self.init_population_random)
 
-		toolbox.register('evaluate', self.evaluate)
+		toolbox.register('evaluate', self.acquisition)
 
 		# mutation/selection opertations operations
 		# toolbox.register("mutate_X_func", tools.mutGaussian, mu=0, sigma=1, indpb=0.1)
@@ -422,19 +594,18 @@ class GeneticGeneralOptimizer():
 		toolbox.register('mutate_X_func', self.custom_mutate_X_func, indpb=mutate_X_func_indpb)
 
 		# initialize population 
-		pop = toolbox.population(num_inds=num_inds)
+		population = toolbox.population(num_inds=num_inds)
 
-
-
+	
 		# Evaluate the entire population
-		fitnesses = map(toolbox.evaluate, pop)
-		for ind, fit in zip(pop, fitnesses):
+		fitnesses = map(toolbox.evaluate, population)
+		for ind, fit in zip(population, fitnesses):
 			ind.fitness.values = fit
 		
 		# create hall of fame
-		num_elites = int(round(halloffame_frac * len(pop), 0))  # 5% of elite individuals
+		num_elites = int(round(halloffame_frac * len(population), 0))  # 5% of elite individuals
 		halloffame = tools.HallOfFame(num_elites)  # hall of fame with top individuals
-		halloffame.update(pop)
+		halloffame.update(population)
 		
 		# register some statistics and create logbook
 		stats = tools.Statistics(lambda ind: ind.fitness.values)
@@ -445,9 +616,8 @@ class GeneticGeneralOptimizer():
 
 		logbook = tools.Logbook()
 		logbook.header = ["gen", "nevals"] + (stats.fields if stats else [])
-		record = stats.compile(pop) if stats else {}
-		logbook.record(gen=0, nevals=len(pop), **record)
-
+		record = stats.compile(population) if stats else {}
+		logbook.record(gen=0, nevals=len(population), **record)
 
 		for gen in track(
 			range(1, num_gen+1),
@@ -455,29 +625,16 @@ class GeneticGeneralOptimizer():
 			description="Optimizing proposals...",
 			transient=False,
 		):
+			# one generation evolution
+			offspring = self._evolution(
+				population=population, 
+				toolbox=toolbox, 
+				halloffame=halloffame,
+				mutate_G_pb=mutate_G_pb, 
+				mutate_X_func_pb=mutate_X_func_pb,
+				mutate_X_func_indpb=mutate_X_func_indpb,
+			)
 		
-			# size of hall of fame
-			hof_size = len(halloffame.items) if halloffame.items else 0
-			# Select the next generation individuals (allow for elitism)
-			offspring = toolbox.select(pop, len(pop) - hof_size)
-			# Clone the selected individuals
-			offspring = list(map(toolbox.clone, offspring))
-			
-			for mutant in offspring:
-				# mutation on G
-				if np.random.uniform() < mutate_G_pb:
-					toolbox.mutate_G(mutant)
-					# if G is mutated, mutate X_func immediately
-					toolbox.mutate_X_func(mutant, indpb=mutate_X_func_indpb) 
-					del mutant.fitness.values
-			
-			# option for extra mutation on X_func
-			for mutant in offspring:
-				# mutation on X_func
-				if np.random.uniform() < mutate_X_func_pb:
-					toolbox.mutate_X_func(mutant, indpb=mutate_X_func_indpb)
-					del mutant.fitness.values
-
 			# Evaluate the individual4s with an invalid fitness
 			invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
 			
@@ -491,20 +648,78 @@ class GeneticGeneralOptimizer():
 			halloffame.update(offspring)
 
 			# The population is entirely replaced by the offspring
-			pop[:] = offspring    
+			population[:] = offspring    
 			
 			# Append the current generation statistics to the logbook
-			record = stats.compile(pop) if stats else {}
+			record = stats.compile(population) if stats else {}
 			logbook.record(gen=gen, nevals=len(invalid_ind), **record)
 
 		# DEAP cleanup
 		del creator.FitnessMin
 		del creator.Individual
-		
-		return pop, logbook
+
+		# select best recommendations and return them as parameter vectors
+		acqf_vals = [ind.fitness for ind in population] #[self.acquisition(x)[0] for x in np.array(population)
+
+		best_idxs = np.argsort(acqf_vals)[:self.batch_size]
+	
+		# list of dictionaries containing the best recommended batch samples
+		# X_func and G 
+		best_batch_pop = [population[idx] for idx in best_idxs]
+
+		# print('best_batch_pop : ', best_batch_pop)
+
+		#--------------------
+		# acquisition part 2 
+		#--------------------
+		# select the set of functional parameters to recommend
+		# TODO: needs to be extended to batched case
+
+		# deinxdexify the X_funcs
+		X_funcs_deindex = self.deindexify(best_batch_pop[0]['X_func'])
+		# select the option to measure using variance-based sampling
+		select_X_func, select_si = self.acqf.acqf_var(X_funcs_deindex, best_batch_pop[0]['G'])
+
+		# reverse scale the functional parameters
+		select_X_func = reverse_normalize(
+			select_X_func, 
+			self.params_obj._mins_x[self.functional_dims],
+			self.params_obj._maxs_x[self.functional_dims],
+		)
 
 
-		
+		# project back to Olympus ParameterVector
+		return_params_dict = {}
+		func_param_iter = 0
+		for param_ix, param in enumerate(self.param_space):
+
+			if param_ix in self.general_parameters:
+				# general parameter, get option
+				opt = param.options[select_si]
+				return_params_dict[param.name] = opt
+			else:
+				# functional parameter, add the value
+				if param.type == 'continuous':
+					# project to olympus bounds
+					return_params_dict[param.name] = self._project_bounds(
+						select_X_func[func_param_iter], param.low, param.high,
+					)
+				else:
+					return_params_dict[param.name] = select_X_func[func_param_iter]
+
+				func_param_iter+=1
+
+		#print(return_params_dict)
+		return_params = [ParameterVector().from_dict(return_params_dict, self.param_space)]
+		#print(return_params)
+
+		return return_params
+
+
+
+#-----------------
+# EXTRA FUNCTIONS
+#------------------
 
 def collect_results(logbooks):
 
@@ -526,171 +741,3 @@ def collect_results(logbooks):
 
 
 		
-
-
-
-if __name__ == '__main__':
-
-	from olympus.surfaces import CatCamel, CatMichalewicz, CatSlope, CatDejong # cat
-	from olympus.surfaces import Branin, Michalewicz, Levy, Dejong # cont
-
-	from olympus.campaigns import Observations, Campaign
-	import matplotlib.pyplot as plt 
-	import seaborn as sns
-
-	S = [0, 1, 2, 3]
-	surf_map_cat = {
-		0: CatCamel(param_dim=2, num_opts=21),
-		1: CatDejong(param_dim=2, num_opts=21),
-		2: CatMichalewicz(param_dim=2, num_opts=21),
-		3: CatSlope(param_dim=2, num_opts=21),
-	}
-	surf_map_cont = {
-		0: Branin(),
-		1: Dejong(),
-		2: Michalewicz(),
-		3: Levy(),
-	}
-
-	PARAM_TYPE = 'categorical'
-
-	#--------------------
-	# CONTINUOUS SURFACE
-	#--------------------
-	if PARAM_TYPE == 'continuous':
-
-		campaign = Campaign()
-		campaign.set_param_space(surf_map_cont[0].param_space)
-
-		params_obj = Parameters(
-				olympus_param_space=campaign.param_space,
-				observations=campaign.get_observations(),
-				has_descriptors=False, 
-				general_parameters=None
-		)
-
-		print(params_obj)
-		setattr(params_obj, '_mins_x', np.array([0., 0.])) # artifically set bounds
-		setattr(params_obj, '_maxs_x', np.array([1., 1.])) 
-
-		bounds = params_obj.get_bounds()
-		setattr(params_obj, 'bounds', bounds )
-		print('bounds : ', bounds)
-
-
-		ga = GeneticGeneralOptimizer(
-			S=S,
-			max_Ng=len(S), 
-			surf_map=surf_map_cont, # assume all surfaces in S have the same param space
-			params_obj=params_obj, 
-		)
-
-		NUM_RUNS = 20
-
-		logbooks = []
-		for _ in range(NUM_RUNS):
-			pop, logbook = ga.optimize(
-								num_inds=100,
-								num_gen=100,
-								mutate_G_pb=0.25, 
-								mutate_X_func_pb=0.25,
-								mutate_X_func_indpb=0.25,
-								halloffame_frac=0.10, 
-							)
-			logbooks.append(logbook)
-
-	#---------------------
-	# CATEGORICAL SURFACE
-	#---------------------
-
-	elif PARAM_TYPE == 'categorical':
-
-		campaign = Campaign()
-		campaign.set_param_space(surf_map_cat[0].param_space)
-
-		params_obj = Parameters(
-				olympus_param_space=campaign.param_space,
-				observations=campaign.get_observations(),
-				has_descriptors=False, 
-				general_parameters=None
-		)
-
-		print(params_obj)
-		setattr(params_obj, '_mins_x', np.array([0. for _ in range(42)])) # artifically set bounds
-		setattr(params_obj, '_maxs_x', np.array([1. for _ in range(42)])) 
-		
-
-		bounds = params_obj.get_bounds()
-		setattr(params_obj, 'bounds', bounds )
-		print('bounds : ', bounds)
-
-
-		ga = GeneticGeneralOptimizer(
-			S=S,
-			max_Ng=len(S), 
-			surf_map=surf_map_cat, # assume all surfaces in S have the same param space
-			params_obj=params_obj, 
-		)
-
-		NUM_RUNS = 20
-
-		logbooks = []
-		for _ in range(NUM_RUNS):
-			pop, logbook = ga.optimize(
-								num_inds=100,
-								num_gen=100,
-								mutate_G_pb=0.25, 
-								mutate_X_func_pb=0.25,
-								mutate_X_func_indpb=0.25,
-								halloffame_frac=0.10, 
-								use_best_init_pop=False
-							)
-			logbooks.append(logbook)
-
-
-	# get the minimum of the each cat surface 
-	mins_ = []
-	for ix, surf in surf_map_cat.items():
-		print(surf.minima)
-		mins_.append(surf.minima[0]['value'])
-	abs_min_ = np.sum(mins_) # theoretical best value
-
-	print('theoretical best : ', abs_min_)
-
-
-	# plotting and analysis
-	min_fitness_vals, num_evals = collect_results(logbooks)
-
-	
-	fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-	NGEN = 101
-
-	mean_trace = np.mean(min_fitness_vals,axis=0)
-	std_trace = np.std(min_fitness_vals,axis=0)
-
-	mean_num_evals = np.mean(np.sum(num_evals, axis=1))
-	print('mean num evals : ', mean_num_evals)
-	
-
-	axes[0].plot(np.arange(NGEN), mean_trace, lw=3)
-	axes[0].fill_between(
-		np.arange(NGEN),
-		mean_trace+1.96*std_trace,
-		mean_trace-1.96*std_trace,
-		alpha=0.2,
-	)
-	axes[0].axhline(abs_min_, ls='--', c='k', alpha=0.8, label='theoretical best')
-
-	for trace in min_fitness_vals:
-		axes[1].plot(np.arange(NGEN), trace, c='b', alpha=0.3)
-
-	axes[1].axhline(abs_min_, ls='--', c='k', alpha=0.8, label='theoretical best')
-
-	plt.tight_layout()
-	plt.show()
-
-
-
-
-
-

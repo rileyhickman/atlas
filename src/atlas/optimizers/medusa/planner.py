@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import gpytorch
 import numpy as np
+import itertools
 import olympus
 import torch
 from botorch.acquisition import (
@@ -31,6 +32,9 @@ from olympus import ParameterVector
 from olympus.campaigns import ParameterSpace
 from olympus.planners import AbstractPlanner, CustomPlanner, Planner
 from olympus.scalarizers import Scalarizer
+
+from golem import *
+from golem import Golem
 
 from atlas import Logger
 from atlas.optimizers.acqfs import (
@@ -56,11 +60,14 @@ from atlas.optimizers.utils import (
     reverse_standardize,
 )
 
+from atlas.utils.golem_utils import get_golem_dists
+
 
 class MedusaPlanner(BasePlanner):
     """..."""
 
     def __init__(
+        self,
         goal: str,
         feas_strategy: Optional[str] = "naive-0",
         feas_param: Optional[float] = 0.2,
@@ -71,8 +78,6 @@ class MedusaPlanner(BasePlanner):
         use_descriptors: bool = False,
         num_init_design: int = 5,
         init_design_strategy: str = "random",
-        # acquisition_type: str = "ei",  # qei, ei, ucb, variance, general
-        # acquisition_optimizer_kind: str = "gradient",  # gradient, genetic
         vgp_iters: int = 2000,
         vgp_lr: float = 0.1,
         max_jitter: float = 1e-1,
@@ -86,14 +91,104 @@ class MedusaPlanner(BasePlanner):
         golem_config: Optional[Dict[str, Any]] = None,
         # MEDUSA-SPECIFIC ARGUMENTS
         # -----------------------------
-        general_parameters: Optional[List[int]] = None,
-        max_subsets: Optional[int] = None,
+        general_parameters: List[int] = None, # indices of general parameters in param space
+        max_Ng: Optional[int] = None,
         **kwargs: Any,
     ):
         local_args = {
             key: val for key, val in locals().items() if key != "self"
         }
         super().__init__(**local_args)
+        
+        self.acquisition_type = 'medusa'
+        self.max_Ng = max_Ng
+
+        # check that we have some general parameters
+        if not self.general_parameters:
+            msg = 'No general parameters define. MEDUSA must have at least one general parameter'
+            Logger.log(msg, 'FATAL')
+
+        # TODO: things to validate about general parameters
+        # num general parameters is less than the total num parameters
+        # all defined general parameters are either categorical or discrete
+        # tmp check that num general parameters = 1 (to be extended)
+        # ...
+
+    def _set_param_space(self, param_space: ParameterSpace):
+        """set the Olympus parameter space (not actually really needed)"""
+
+        # infer the problem type
+        self.problem_type = infer_problem_type(self.param_space)
+
+        # make attribute that indicates wether or not we are using descriptors for
+        # categorical variables
+        if self.problem_type == "fully_categorical":
+            descriptors = []
+            for p in self.param_space:
+                if not self.use_descriptors:
+                    descriptors.extend([None for _ in range(len(p.options))])
+                else:
+                    descriptors.extend(p.descriptors)
+            if all(d is None for d in descriptors):
+                self.has_descriptors = False
+            else:
+                self.has_descriptors = True
+
+        elif self.problem_type in ["mixed_cat_cont", "mixed_cat_dis"]:
+            descriptors = []
+            for p in self.param_space:
+                if p.type == "categorical":
+                    if not self.use_descriptors:
+                        descriptors.extend(
+                            [None for _ in range(len(p.options))]
+                        )
+                    else:
+                        descriptors.extend(p.descriptors)
+            if all(d is None for d in descriptors):
+                self.has_descriptors = False
+            else:
+                self.has_descriptors = True
+
+        else:
+            self.has_descriptors = False
+
+        # check general parameter config
+        if self.general_parameters is not None:
+            # check types of general parameters
+            if not all(
+                [
+                    self.param_space[ix].type in ["discrete", "categorical"]
+                    for ix in self.general_parameters
+                ]
+            ):
+                msg = "Only discrete- and categorical-type general parameters are currently supported"
+                Logger.log(msg, "FATAL")
+
+        # set functional parameter space object
+        self.func_param_space = ParameterSpace()
+        for param_ix, param in enumerate(self.param_space):
+            if not param_ix in self.general_parameters:
+                self.func_param_space.add(param)
+        
+
+        # initialize golem
+        if self.golem_config is not None:
+            self.golem_dists = get_golem_dists(
+                self.golem_config, self.param_space
+            )
+            if not self.golem_dists == None:
+                self.golem = Golem(
+                    forest_type="dt",
+                    ntrees=50,
+                    goal="min",
+                    verbose=True,
+                )  # always minimization goal
+            else:
+                self.golem = None
+        else:
+            self.golem_dists = None
+            self.golem = None
+
 
     def build_train_regression_gp(
         self, train_x: torch.Tensor, train_y: torch.Tensor
@@ -271,9 +366,10 @@ class MedusaPlanner(BasePlanner):
                 self.cla_surr_min_, self.cla_surr_max_ = None, None
 
             # get the incumbent point
-            f_best_argmin = torch.argmin(self.train_y_scaled_reg)
-
-            f_best_scaled = self.train_y_scaled_reg[f_best_argmin][0].float()
+            #f_best_argmin = torch.argmin(self.train_y_scaled_reg)
+            # TODO: using UCB for MEDUSA acqf for now so we dont have to worry about
+            # the incumbent point --> how do extend to EI in the future??
+            #f_best_scaled = self.train_y_scaled_reg[f_best_argmin][0].float()
 
             # compute the ratio of infeasible to total points
             infeas_ratio = (
@@ -281,25 +377,84 @@ class MedusaPlanner(BasePlanner):
                 / self.train_x_scaled_cla.size(0)
             ).item()
             # get the approximate max and min of the acquisition function without the feasibility contribution
-            acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled)
+            # NOTE: we are not getting the acqf max min in this case - should we do it in the future??
+            # probably will need this for unknown constraints
+            #acqf_min_max = self.get_aqcf_min_max(self.reg_model, f_best_scaled)
+
+            # generate all general params representations with empty features for functional params
+            X_sns_empty, _ = self.generate_X_sns()
+            # get functional dims mask
+            functional_dims = np.logical_not(self.params_obj.exp_general_mask)
 
             # medusa always uses the feasibility aware general partition acquisition function
-      
             self.acqf = MedusaAcquisition(
-                self.reg_model,
-                self.params_obj,
+                reg_model=self.reg_model,
+                params_obj=self.params_obj,
+                X_sns_empty=X_sns_empty,
+                functional_dims=functional_dims,
+                # ... 
             )
 
             # medusa always uses genetic general acqusition optimizer
             acquisition_optimizer = GeneticGeneralOptimizer(
-                self.params_obj,
-                self.acquisition_type,
-                self.acqf,
-                self.known_constraint,
-                self.batch_size,
-                self.feas_strategy,
-                self.fca_constraint,
-                self._params,
-                self.timings_dict,
-                use_reg_only=use_reg_only,
+                params_obj=self.params_obj,
+                acquisition_type=self.acquisition_type,
+                acqf=self.acqf,
+                known_constraints=self.known_constraints,
+                batch_size=self.batch_size,
+                feas_strategy=self.feas_strategy,
+                fca_constraint=self.fca_constraint,
+                params=self._params,
+                timings_dict=self.timings_dict,
+                max_Ng=self.max_Ng,
+                func_param_space=self.func_param_space,
             )
+
+            return_params = acquisition_optimizer.optimize()
+
+        return return_params
+    
+
+    def generate_X_sns(self):
+        # generate Cartesian product space of the general parameter options
+        param_options = []
+        for ix in self.params_obj.general_dims:
+            param_options.append(self.param_space[ix].options)
+
+        cart_product = list(itertools.product(*param_options))
+        cart_product = [list(elem) for elem in cart_product]
+
+        X_sns_empty = torch.empty(
+            size=(len(cart_product), self.params_obj.expanded_dims)
+        ).double()
+        general_expanded = []
+        general_raw = []
+        for elem in cart_product:
+            # convert to ohe and add to currently available options
+            ohe, raw = [], []
+            for val, obj in zip(elem, self.param_space):
+                if obj.type == "categorical":
+                    ohe.append(
+                        cat_param_to_feat(
+                            obj, val, self.params_obj.has_descriptors
+                        )
+                    )
+                    raw.append(val)
+                else:
+                    ohe.append([val])
+            general_expanded.append(np.concatenate(ohe))
+            general_raw.append(raw)
+
+        general_expanded = torch.tensor(np.array(general_expanded))
+
+        X_sns_empty[:, self.params_obj.exp_general_mask] = general_expanded
+        # forward normalize
+        X_sns_empty = forward_normalize(
+            X_sns_empty,
+            self.params_obj._mins_x,
+            self.params_obj._maxs_x,
+        )
+        # TODO: careful of the batch size, will need to change this
+        X_sns_empty = torch.unsqueeze(X_sns_empty, 1)
+
+        return X_sns_empty, general_raw

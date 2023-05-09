@@ -583,35 +583,35 @@ class FeasibilityAwareqNEHVI(
         return self.compute_combined_acqf(acqf, X)
 
 
-class FeasibilityAwareGeneralPartition(
-    AcquisitionFunction, FeasibilityAwareAcquisition
-):
-    def __init__(self):
-        pass
-
-
-
-class MedusaAcquisition(AcquisitionFunction):
+class MedusaAcquisition():
     """ Acquisition function for Medsua
 
     Args: 
         reg_model: gpytorch model 
+        params_obj: atlas Parameter object
+        X_sns_empty (torch.Tensor): torch tensor of all general parameter reps with 
+            empty values for functional parameters
+        funcitonal_dims (np.ndarray): ... 
     """
     def __init__(
             self, 
             reg_model,
             params_obj,
+            X_sns_empty,
+            functional_dims,
+            maximize=False,
+            beta=torch.tensor(1.)
         ):
         self.reg_model = reg_model
         self.params_obj = params_obj
         self.param_space = self.params_obj.param_space
+        self.X_sns_empty = X_sns_empty
+        self.functional_dims = functional_dims
+        self.maximize = maximize
+        self.beta = beta
 
-        # set up non-functional parameter representations
-        self.X_sns_empty, _ = self.generate_X_sns()
-        self.functional_dims = np.logical_not(self.params_obj.exp_general_mask)
 
-
-    def __call__(self, X_funcs, Gs):
+    def __call__(self, X_func, G):
         """ Evaluate the acquisition function
 
         Args:
@@ -622,68 +622,69 @@ class MedusaAcquisition(AcquisitionFunction):
             with shape (# samples, Ng, |Sg| )
 
         """
-
-        # loop over the # samples
-        # for X_func, G in zip(X_funcs, Gs):
-
-        #     # loop through the X_funcs and Sgs
-        #     for 
-
-
-        return None
-    
-
-    def evaluate_single_Sg(self):
-        """ ...
-        """
-        return None
-
-    def generate_X_sns(self):
-        # generate Cartesian product space of the general parameter options
-        param_options = []
-        for ix in self.params_obj.general_dims:
-            param_options.append(self.param_space[ix].options)
-
-        cart_product = list(itertools.product(*param_options))
-        cart_product = [list(elem) for elem in cart_product]
-
-        X_sns_empty = torch.empty(
-            size=(len(cart_product), self.params_obj.expanded_dims)
-        ).double()
-        general_expanded = []
-        general_raw = []
-        for elem in cart_product:
-            # convert to ohe and add to currently available options
-            ohe, raw = [], []
-            for val, obj in zip(elem, self.param_space):
-                if obj.type == "categorical":
-                    ohe.append(
-                        cat_param_to_feat(
-                            obj, val, self.params_obj.has_descriptors
-                        )
-                    )
-                    raw.append(val)
-                else:
-                    ohe.append([val])
-            general_expanded.append(np.concatenate(ohe))
-            general_raw.append(raw)
-
-        general_expanded = torch.tensor(np.array(general_expanded))
-
-        X_sns_empty[:, self.params_obj.exp_general_mask] = general_expanded
-        # forward normalize
-        X_sns_empty = forward_normalize(
-            X_sns_empty,
-            self.params_obj._mins_x,
-            self.params_obj._maxs_x,
-        )
-        # TODO: careful of the batch size, will need to change this
-        X_sns_empty = torch.unsqueeze(X_sns_empty, 1)
-
-        return X_sns_empty, general_raw
-
-
+        # generate a tensor of all options
+        all_options = []
+        all_options_raw = []
+        for X, S in zip(X_func, G):
+            for si in S:
+                all_options_raw.append([X, si])
+                opt = deepcopy(self.X_sns_empty[si])
+                opt[:,self.functional_dims] = torch.tensor(X)
+                all_options.append(opt)
         
+        all_options = torch.cat(all_options) # (num options, num dims)
+
+        # make prediction with regression surrogate
+        posterior = self.reg_model.posterior(all_options.double())
+        mu = posterior.mean   # (num options, 1)
+        sigma = posterior.variance.clamp_min(1e-9).sqrt() # (num options, 1)
+
+        # sum the mean and sigmas
+        mu_sum  = torch.sum(mu)  # scalar
+        sigma_sum = torch.sum(sigma) # scalar
+
+        # compute the UCB acquisition with these values
+        return (mu_sum if self.maximize else -mu_sum) + self.beta.sqrt() * sigma_sum
+    
+    # def __call__(self, X_funcs, Gs):
+    #     """ dummy acquisition evaluation """
+    #     return np.random.uniform(size=None)
+
+    # TODO: need to extend this to batched case
+    def acqf_var(self, X_funcs_deindex, G):
+        """ variance-based sampling over all potential options
+        """
+    
+        sigmas = []
+        all_options_raw = []
+        for X, S in zip(X_funcs_deindex, G):
+            for si in S:
+                #print(f'X : {X}\t si : {si}')
+                all_options_raw.append([X, si])
+                # produce the option
+                opt = deepcopy(self.X_sns_empty[si])
+                # print(opt.shape)
+                # print(X.shape)
+                # print(opt[:,self.functional_dims].shape)
+                opt[:,self.functional_dims] = torch.tensor(X)
+
+                #print('opt : ', opt)
+
+                # make prediction with regression surrogate model
+                posterior = self.reg_model.posterior(opt.double())
+                sigma = posterior.variance.clamp_min(1e-9).sqrt()
+
+                #print('sigma : ', sigma)
+
+                sigmas.append(sigma.detach().numpy().item())
+
+        #print('sigmas : ', sigmas)
+        # get the index of the largest sigma
+        select_idx = np.argmax(sigmas)
+        select_option = all_options_raw[select_idx]
+        #print(select_option)
+        return select_option[0], select_option[1] # X_func, si
+
 
 
 

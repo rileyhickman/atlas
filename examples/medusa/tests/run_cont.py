@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import sys
+import os, sys
+import shutil
 
 import numpy as np
 import pandas as pd
@@ -50,7 +51,7 @@ def measure_single_obj(sample, surf_map):
 
 	# non-functional param will always be x0
 	# i.e. index of the surface to measure
-	si = int( sample.x0 )
+	si = int( sample.x0[2:] )
 
 	# functional params will always be x1 and x2 
 	# NOTE: these should already be floats, just making sure
@@ -88,8 +89,8 @@ def set_param_space(func_param_type='continuous'):
 	param_space = ParameterSpace()
 	if func_param_type == 'continuous':
 		# 2 continuous functional parameters
-		x1 = ParameterContinuous(name='x0', low=0.0, high=1.0)
-		x2 = ParameterContinuous(name='x1', low=0.0, high=1.0)
+		x1 = ParameterContinuous(name='x1', low=0.0, high=1.0)
+		x2 = ParameterContinuous(name='x2', low=0.0, high=1.0)
 		# 1 categorical non-functional parameter 
 		if with_descriptors_nonfunc:
 			descriptors = [[float(i) for _ in range(num_desc_nonfunc)] for i in range(len(surf_map))]
