@@ -173,6 +173,73 @@ class BasePlanner(CustomPlanner):
         self.num_init_design_completed = 0
 
 
+    def _set_param_space(self, param_space: ParameterSpace):
+            """set the Olympus parameter space (not actually really needed)"""
+
+            # infer the problem type
+            self.problem_type = infer_problem_type(self.param_space)
+
+            # make attribute that indicates wether or not we are using descriptors for
+            # categorical variables
+            if self.problem_type == "fully_categorical":
+                descriptors = []
+                for p in self.param_space:
+                    if not self.use_descriptors:
+                        descriptors.extend([None for _ in range(len(p.options))])
+                    else:
+                        descriptors.extend(p.descriptors)
+                if all(d is None for d in descriptors):
+                    self.has_descriptors = False
+                else:
+                    self.has_descriptors = True
+
+            elif self.problem_type in ["mixed_cat_cont", "mixed_cat_dis"]:
+                descriptors = []
+                for p in self.param_space:
+                    if p.type == "categorical":
+                        if not self.use_descriptors:
+                            descriptors.extend(
+                                [None for _ in range(len(p.options))]
+                            )
+                        else:
+                            descriptors.extend(p.descriptors)
+                if all(d is None for d in descriptors):
+                    self.has_descriptors = False
+                else:
+                    self.has_descriptors = True
+
+            else:
+                self.has_descriptors = False
+
+            # check general parameter config
+            if self.general_parameters is not None:
+                # check types of general parameters
+                if not all(
+                    [
+                        self.param_space[ix].type in ["discrete", "categorical"]
+                        for ix in self.general_parameters
+                    ]
+                ):
+                    msg = "Only discrete- and categorical-type general parameters are currently supported"
+                    Logger.log(msg, "FATAL")
+
+            # initialize golem
+            if self.golem_config is not None:
+                self.golem_dists = get_golem_dists(
+                    self.golem_config, self.param_space
+                )
+                if not self.golem_dists == None:
+                    self.golem = Golem(
+                        forest_type="dt",
+                        ntrees=50,
+                        goal="min",
+                        verbose=True,
+                    )  # always minimization goal
+                else:
+                    self.golem = None
+            else:
+                self.golem_dists = None
+                self.golem = None
 
 
 
