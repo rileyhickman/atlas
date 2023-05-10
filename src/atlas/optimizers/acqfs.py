@@ -645,7 +645,31 @@ class MedusaAcquisition():
 
         # compute the UCB acquisition with these values
         return (mu_sum if self.maximize else -mu_sum) + self.beta.sqrt() * sigma_sum
-    
+
+
+    def run_mu_only(self, X_func, G):
+        """ mean prediction with regression surorgate only
+        """
+        # generate a tensor of all options
+        all_options = []
+        all_options_raw = []
+        for X, S in zip(X_func, G):
+            for si in S:
+                all_options_raw.append([X, si])
+                opt = deepcopy(self.X_sns_empty[si])
+                opt[:,self.functional_dims] = torch.tensor(X)
+                all_options.append(opt)
+        
+        all_options = torch.cat(all_options) # (num options, num dims)
+
+        # make prediction with regression surrogate
+        posterior = self.reg_model.posterior(all_options.double())
+        mu = posterior.mean   # (num options, 1)
+        mu_sum = torch.sum(mu)
+
+        return mu_sum if self.maximize else -mu_sum
+
+
     # def __call__(self, X_funcs, Gs):
     #     """ dummy acquisition evaluation """
     #     return np.random.uniform(size=None)

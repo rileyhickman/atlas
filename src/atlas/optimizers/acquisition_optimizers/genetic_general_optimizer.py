@@ -48,6 +48,8 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 		timings_dict: Dict,
 		max_Ng: int,
 		func_param_space, 
+		mode:str, # "acqf" or "proposal"
+		fix_Ng=None, # fix the number of X_funcs to recommmend
 		num_init_evals:int=int(1e3), # number of inital evals for GA
 		
 		**kwargs: Any, 
@@ -66,6 +68,8 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 		self.acqf = acqf
 		self.timings_dict = timings_dict
 		self.acquisition_type = acquisition_type
+		self.mode = mode 
+		self.fix_Ng = fix_Ng
 		
 
 		self.func_param_space = func_param_space
@@ -217,24 +221,7 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 	def dummy_evaluate(self, individual):
 		return np.random.uniform(),
 
-	# TODO: outdated
-	@staticmethod
-	def measure_single_obj(X_func, si, surf_map):
-		return surf_map[si].run(X_func)[0][0]
-
-	# TODO: outdated
-	def __OLD_evaluate(self, individual):
-
-		G = individual['G']
-		X_func = individual['X_func']
-		f_x = 0.
-		for g_ix, Sg in enumerate(G):
-			for si in Sg:
-				f_x += self.measure_single_obj(X_func[g_ix], si, self.surf_map)
-
-		return f_x, 
-
-	def acquisition(self, individual: Dict) -> Tuple:
+	def acquisition_acqf(self, individual: Dict) -> Tuple:
 		# print(individual)
 		G = individual['G']
 		X_func = np.array(individual['X_func'])
@@ -244,8 +231,6 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 
 		# de-indexify X_func only before calling the acquisition function
 		X_func = self.deindexify(X_func)
-
-
 		# print('deindex X_func shape : ', X_func.shape)
 		# print('deindex X_func : ', X_func)
 
@@ -256,13 +241,28 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 		# return the negative of the acqf - this is conventionally minimized by
 		# deap, but we want to maximize acqf
 		return -self.acqf(X_func=X_func, G=G).detach().numpy(),
+
+	def acquisition_proposal(self, individual: Dict) -> Tuple:
+		# print(individual)
+		G = individual['G']
+		X_func = np.array(individual['X_func'])
+		# de-indexify X_func only before calling the acquisition function
+		X_func = self.deindexify(X_func)
+		# return the negative of the acqf - this is conventionally minimized by
+		# deap, but we want to maximize acqf
+		return -self.acqf(X_func=X_func, G=G).detach().numpy(),
 	
 
 	#----------------------------
 	# POPULATION INITIALIZATION
 	#----------------------------
 
-	def init_population_best(self, num_inds, max_partitions=20):
+	def init_population_best(self, num_inds, max_partitions=30):
+
+		if self.mode == 'acqf':
+			eval_method = self.acquisition_acqf
+		elif self.mode == 'proposal':
+			eval_method = self.acquisition_proposal
 		f_xs = []
 		Gs = gen_partitions(self.S)
 		if len(Gs) > max_partitions:
@@ -274,18 +274,12 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 			Ng = len(G)
 			X_funcs = []
 			for _ in range(Ng):
-
 				# produce the proposals for the functional parameter space only (X_func)
 				proposals, raw_proposals = propose_randomly(
 					num_proposals=self.num_init_evals, 
 					param_space=self.func_param_space,
 					has_descriptors=self.params_obj.has_descriptors,
 				)
-				# print('proposals : ', proposals)
-				# print('')
-				# print('raw_proposals : ', raw_proposals )
-				# quit()
-
 				if self.func_problem_type == 'fully_categorical':
 					# use raw proposals (string reps) for fully categorical
 					X_funcs.append(raw_proposals)
@@ -298,7 +292,7 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 			X_funcs = np.array(X_funcs).swapaxes(0,1)
 			for X_func in X_funcs:
 				dict_ = {'G': G, 'X_func': list([list(X) for X in X_func]), 'Ng': Ng}
-				dict_['f_x'] = self.acquisition(dict_)[0]
+				dict_['f_x'] = eval_method(dict_)[0]
 				f_xs.append(dict_)
 
 		vals = [d['f_x'] for d in f_xs]
@@ -309,9 +303,15 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 
 		return pop
 
-	def init_population_random(self, num_inds, max_partitions=20):
+	def init_population_random(self, num_inds, max_partitions=30):
 		f_xs = []
 		Gs = gen_partitions(self.S)
+		if self.fix_Ng:
+			# select all the partitions with Ng subsets
+			Gs = [G for G in Gs if len(G)==self.fix_Ng]
+			if len(Gs)==0:
+				Logger.log('Something is wrong. No selected Gs!', 'FATAL')
+
 		if len(Gs) > max_partitions:
 			Logger.log(f'Max partitions exceeded. Sampling random subset of {max_partitions}', 'WARNING')
 			np.random.shuffle(Gs)
@@ -351,12 +351,11 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 	# CUSTOM MUTATIONS
 	#------------------
 
-	def custom_mutate_G(self, ind):
+	def custom_mutate_G(self, ind, mutation_types=['fusion', 'swap', 'split']):
 		""" mutate non-functional param assignments G
 		"""
 		
 		# determine whether we are making a mutation to G
-		mutation_types = ['fusion', 'swap', 'split'] #'fusion', 'split']
 		mutated = False
 		while not mutated and len(mutation_types)>0:
 			mutation_type = np.random.choice(mutation_types)
@@ -584,13 +583,22 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 			# use random intial population
 			toolbox.register('population', self.init_population_random)
 
-		toolbox.register('evaluate', self.acquisition)
+		if self.mode == 'acqf':
+			toolbox.register('evaluate', self.acquisition_acqf)
+		elif self.mode == 'proposal':
+			toolbox.register('evaluate', self.acquisition_proposal)
 
 		# mutation/selection opertations operations
 		# toolbox.register("mutate_X_func", tools.mutGaussian, mu=0, sigma=1, indpb=0.1)
 		toolbox.register("select", tools.selTournament, tournsize=3)
 
-		toolbox.register('mutate_G', self.custom_mutate_G)
+		if self.fix_Ng:
+			# if we fix Ng, we only allow swap mutation since it conserves the number of subsets
+			toolbox.register('mutate_G', self.custom_mutate_G, mutation_types=['swap'])
+		else:
+			# if Ng can vary freely, use the full scope of mutations on G
+			toolbox.register('mutate_G', self.custom_mutate_G, mutation_types=['fusion', 'swap', 'split'])
+			
 		toolbox.register('mutate_X_func', self.custom_mutate_X_func, indpb=mutate_X_func_indpb)
 
 		# initialize population 
@@ -669,51 +677,65 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 
 		# print('best_batch_pop : ', best_batch_pop)
 
-		#--------------------
-		# acquisition part 2 
-		#--------------------
-		# select the set of functional parameters to recommend
-		# TODO: needs to be extended to batched case
-
 		# deinxdexify the X_funcs
 		X_funcs_deindex = self.deindexify(best_batch_pop[0]['X_func'])
-		# select the option to measure using variance-based sampling
-		select_X_func, select_si = self.acqf.acqf_var(X_funcs_deindex, best_batch_pop[0]['G'])
-
-		# reverse scale the functional parameters
-		select_X_func = reverse_normalize(
-			select_X_func, 
-			self.params_obj._mins_x[self.functional_dims],
-			self.params_obj._maxs_x[self.functional_dims],
-		)
 
 
-		# project back to Olympus ParameterVector
-		return_params_dict = {}
-		func_param_iter = 0
-		for param_ix, param in enumerate(self.param_space):
+		if self.mode == 'acqf':
+			#--------------------
+			# acquisition part 2 
+			#--------------------
+			# select the set of functional parameters to recommend
+			# TODO: needs to be extended to batched case
 
-			if param_ix in self.general_parameters:
-				# general parameter, get option
-				opt = param.options[select_si]
-				return_params_dict[param.name] = opt
-			else:
-				# functional parameter, add the value
-				if param.type == 'continuous':
-					# project to olympus bounds
-					return_params_dict[param.name] = self._project_bounds(
-						select_X_func[func_param_iter], param.low, param.high,
-					)
+
+			# select the option to measure using variance-based sampling
+			select_X_func, select_si = self.acqf.acqf_var(X_funcs_deindex, best_batch_pop[0]['G'])
+
+			# reverse scale the functional parameters
+			select_X_func = reverse_normalize(
+				select_X_func, 
+				self.params_obj._mins_x[self.functional_dims],
+				self.params_obj._maxs_x[self.functional_dims],
+			)
+
+
+			# project back to Olympus ParameterVector
+			return_params_dict = {}
+			func_param_iter = 0
+			for param_ix, param in enumerate(self.param_space):
+
+				if param_ix in self.general_parameters:
+					# general parameter, get option
+					opt = param.options[select_si]
+					return_params_dict[param.name] = opt
 				else:
-					return_params_dict[param.name] = select_X_func[func_param_iter]
+					# functional parameter, add the value
+					if param.type == 'continuous':
+						# project to olympus bounds
+						return_params_dict[param.name] = self._project_bounds(
+							select_X_func[func_param_iter], param.low, param.high,
+						)
+					else:
+						return_params_dict[param.name] = select_X_func[func_param_iter]
 
-				func_param_iter+=1
+					func_param_iter+=1
 
-		#print(return_params_dict)
-		return_params = [ParameterVector().from_dict(return_params_dict, self.param_space)]
-		#print(return_params)
+			#print(return_params_dict)
+			return_params = [ParameterVector().from_dict(return_params_dict, self.param_space)]
+			#print(return_params)
+			return return_params
+		elif self.mode == 'proposal':
+			# reverse scale the functional parameters
+			select_X_func = reverse_normalize(
+				X_funcs_deindex, 
+				self.params_obj._mins_x[self.functional_dims],
+				self.params_obj._maxs_x[self.functional_dims],
+			)
 
-		return return_params
+			return select_X_func, best_batch_pop[0]['G']
+
+
 
 
 

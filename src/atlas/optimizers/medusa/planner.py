@@ -93,6 +93,7 @@ class MedusaPlanner(BasePlanner):
         # -----------------------------
         general_parameters: List[int] = None, # indices of general parameters in param space
         max_Ng: Optional[int] = None,
+        use_random_acqf: bool = False, # random sampling acquisition function (for baseline)
         **kwargs: Any,
     ):
         local_args = {
@@ -102,6 +103,8 @@ class MedusaPlanner(BasePlanner):
         
         self.acquisition_type = 'medusa'
         self.max_Ng = max_Ng
+        self.use_random_acqf = use_random_acqf
+
 
         # check that we have some general parameters
         if not self.general_parameters:
@@ -188,6 +191,13 @@ class MedusaPlanner(BasePlanner):
         else:
             self.golem_dists = None
             self.golem = None
+
+        # if using random acqusition function for baseline
+        # construct random sampling planner from Olympus
+        if self.use_random_acqf:
+            self.random_acqf = olympus.planners.RandomSearch(goal='minimize')
+            self.random_acqf.set_param_space(self.param_space)
+
 
 
     def build_train_regression_gp(
@@ -386,31 +396,43 @@ class MedusaPlanner(BasePlanner):
             # get functional dims mask
             functional_dims = np.logical_not(self.params_obj.exp_general_mask)
 
-            # medusa always uses the feasibility aware general partition acquisition function
+
+            # instantiate MEDUSA acquisition function
             self.acqf = MedusaAcquisition(
-                reg_model=self.reg_model,
-                params_obj=self.params_obj,
-                X_sns_empty=X_sns_empty,
-                functional_dims=functional_dims,
-                # ... 
-            )
+                    reg_model=self.reg_model,
+                    params_obj=self.params_obj,
+                    X_sns_empty=X_sns_empty,
+                    functional_dims=functional_dims,
+                    # ... 
+                )
 
-            # medusa always uses genetic general acqusition optimizer
-            acquisition_optimizer = GeneticGeneralOptimizer(
-                params_obj=self.params_obj,
-                acquisition_type=self.acquisition_type,
-                acqf=self.acqf,
-                known_constraints=self.known_constraints,
-                batch_size=self.batch_size,
-                feas_strategy=self.feas_strategy,
-                fca_constraint=self.fca_constraint,
-                params=self._params,
-                timings_dict=self.timings_dict,
-                max_Ng=self.max_Ng,
-                func_param_space=self.func_param_space,
-            )
+            if not self.use_random_acqf:
+                Logger.log('Proceeding with MEDUSA acquisition function optimization', 'WARNING')
+                # medusa always uses genetic general acqusition optimizer
+                acquisition_optimizer = GeneticGeneralOptimizer(
+                    params_obj=self.params_obj,
+                    acquisition_type=self.acquisition_type,
+                    acqf=self.acqf,
+                    known_constraints=self.known_constraints,
+                    batch_size=self.batch_size,
+                    feas_strategy=self.feas_strategy,
+                    fca_constraint=self.fca_constraint,
+                    params=self._params,
+                    timings_dict=self.timings_dict,
+                    max_Ng=self.max_Ng,
+                    func_param_space=self.func_param_space,
+                    mode='acqf',
+                )
 
-            return_params = acquisition_optimizer.optimize()
+                return_params = acquisition_optimizer.optimize()
+
+            else:
+                Logger.log('Proceeding with RANDOM acquisition function!', 'WARNING')
+                # generate a random sample to measure next
+                self.random_acqf._tell(iteration=len(self._values))
+                return_params = self.random_acqf.ask()
+                print('RANDOM RETURN PARAMS : ', return_params)
+
 
         return return_params
     
@@ -458,3 +480,49 @@ class MedusaPlanner(BasePlanner):
         X_sns_empty = torch.unsqueeze(X_sns_empty, 1)
 
         return X_sns_empty, general_raw
+
+
+    def optimize_proposals(self):
+        """ Use genetic algorithm optimizer to optimize X_func and G proposals
+
+        This function should return a predicted lead candiddate (X_func and G) for
+        each of Ng=1,...,num_general_options
+
+        """
+        poss_Ngs = np.arange(
+            len(self.param_space[self.general_parameters[0]].options)
+        )+1
+
+        best_proposals = {}
+
+        for Ng in poss_Ngs:
+            proposal_optimizer = GeneticGeneralOptimizer(
+                params_obj=self.params_obj,
+                acquisition_type=self.acquisition_type,
+                acqf=self.acqf,
+                known_constraints=self.known_constraints,
+                batch_size=self.batch_size,
+                feas_strategy=self.feas_strategy,
+                fca_constraint=self.fca_constraint,
+                params=self._params,
+                timings_dict=self.timings_dict,
+                max_Ng=self.max_Ng,
+                func_param_space=self.func_param_space,
+                fix_Ng=Ng,
+                mode='proposal',
+            )
+
+            # TODO: need to somehow fix Ng here???
+            X_func, G = proposal_optimizer.optimize()
+
+            # print('='*50)
+            # print('')
+            # print(Ng)
+            # print(X_func)
+            # print(G)
+            # print('')
+
+            best_proposals[Ng] = {'X_func': X_func, 'G': G}
+
+
+        return best_proposals
