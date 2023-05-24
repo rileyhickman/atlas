@@ -189,6 +189,7 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 					else:
 						counter+=len(p.options)
 			samples.append(sample)
+
 		return np.array(samples)
 
 	def deindexify(self, x):
@@ -207,7 +208,8 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 				elif p.type == 'categorical':
 					sample.extend(
 						cat_param_to_feat(
-							p, p.options[int(elem)], self.params_obj.has_descriptors,
+							#p, p.options[int(elem)], self.params_obj.has_descriptors,
+							p, elem, self.params_obj.has_descriptors,
 						)
 					)
 			samples.append(sample)
@@ -222,28 +224,17 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 		return np.random.uniform(),
 
 	def acquisition_acqf(self, individual: Dict) -> Tuple:
-		# print(individual)
 		G = individual['G']
 		X_func = np.array(individual['X_func'])
-		# print('type G : ', type(G))
-		# print('type X_func : ',type(X_func))
-		# print('shape X_func : ', X_func.shape)
 
 		# de-indexify X_func only before calling the acquisition function
 		X_func = self.deindexify(X_func)
-		# print('deindex X_func shape : ', X_func.shape)
-		# print('deindex X_func : ', X_func)
 
-		# NOTE: dont need to make this a torch tensor yet ... 
-		# X_func = torch.tensor(
-		# 	X_func.reshape((1, self.batch_size, X_func.shape[1]))
-		# )
 		# return the negative of the acqf - this is conventionally minimized by
 		# deap, but we want to maximize acqf
 		return -self.acqf(X_func=X_func, G=G).detach().numpy(),
 
 	def acquisition_proposal(self, individual: Dict) -> Tuple:
-		# print(individual)
 		G = individual['G']
 		X_func = np.array(individual['X_func'])
 		# de-indexify X_func only before calling the acquisition function
@@ -675,11 +666,15 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 		# X_func and G 
 		best_batch_pop = [population[idx] for idx in best_idxs]
 
-		# print('best_batch_pop : ', best_batch_pop)
-
-		# deinxdexify the X_funcs
-		X_funcs_deindex = self.deindexify(best_batch_pop[0]['X_func'])
-
+		if self.func_problem_type == 'fully_categorical':
+			X_funcs_cat = np.array(best_batch_pop[0]['X_func'])
+			X_funcs_deindex = self.deindexify(best_batch_pop[0]['X_func'])
+		elif self.func_problem_type == 'fully_continuous':
+			# deinxdexify the X_funcs
+			X_funcs_cat = None
+			X_funcs_deindex = self.deindexify(best_batch_pop[0]['X_func'])
+		else:
+			Logger.log(f'Functional problem type "{self.func_problem_type}" not yet implemented', 'FATAL')
 
 		if self.mode == 'acqf':
 			#--------------------
@@ -688,17 +683,20 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 			# select the set of functional parameters to recommend
 			# TODO: needs to be extended to batched case
 
-
 			# select the option to measure using variance-based sampling
-			select_X_func, select_si = self.acqf.acqf_var(X_funcs_deindex, best_batch_pop[0]['G'])
-
-			# reverse scale the functional parameters
-			select_X_func = reverse_normalize(
-				select_X_func, 
-				self.params_obj._mins_x[self.functional_dims],
-				self.params_obj._maxs_x[self.functional_dims],
-			)
-
+			select_X_func, select_si = self.acqf.acqf_var(
+				X_funcs_deindex, 
+				best_batch_pop[0]['G'], 
+				X_funcs_cat=X_funcs_cat,
+				)
+			
+			# reverse scale the functional parameters if continuous/discrete
+			if self.func_problem_type == 'fully continuous':
+				select_X_func = reverse_normalize(
+					select_X_func, 
+					self.params_obj._mins_x[self.functional_dims],
+					self.params_obj._maxs_x[self.functional_dims],
+				)
 
 			# project back to Olympus ParameterVector
 			return_params_dict = {}
@@ -720,22 +718,24 @@ class GeneticGeneralOptimizer(AcquisitionOptimizer):
 						return_params_dict[param.name] = select_X_func[func_param_iter]
 
 					func_param_iter+=1
-
-			#print(return_params_dict)
+			
 			return_params = [ParameterVector().from_dict(return_params_dict, self.param_space)]
-			#print(return_params)
+
 			return return_params
+		
 		elif self.mode == 'proposal':
-			# reverse scale the functional parameters
-			select_X_func = reverse_normalize(
-				X_funcs_deindex, 
-				self.params_obj._mins_x[self.functional_dims],
-				self.params_obj._maxs_x[self.functional_dims],
-			)
+			# reverse scale the functional parameters if continuous 
+			if self.func_problem_type == 'fully continuous':
+				select_X_func = reverse_normalize(
+					X_funcs_deindex, 
+					self.params_obj._mins_x[self.functional_dims],
+					self.params_obj._maxs_x[self.functional_dims],
+				)
+			else:
+				select_X_func = best_batch_pop[0]['X_func']
+
 
 			return select_X_func, best_batch_pop[0]['G']
-
-
 
 
 

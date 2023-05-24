@@ -637,12 +637,12 @@ if __name__ == '__main__':
 		logbooks = []
 		for _ in range(NUM_RUNS):
 			pop, logbook = ga.optimize(
-								num_inds=100,
+								num_inds=200,
 								num_gen=100,
-								mutate_G_pb=0.25, 
-								mutate_X_func_pb=0.25,
-								mutate_X_func_indpb=0.25,
-								halloffame_frac=0.10, 
+								mutate_G_pb=0.28, 
+								mutate_X_func_pb=0.28,
+								mutate_X_func_indpb=0.28,
+								halloffame_frac=0.15, 
 								use_best_init_pop=False
 							)
 			logbooks.append(logbook)
@@ -685,6 +685,12 @@ if __name__ == '__main__':
 		axes[1].plot(np.arange(NGEN), trace, c='b', alpha=0.3)
 
 	axes[1].axhline(abs_min_, ls='--', c='k', alpha=0.8, label='theoretical best')
+
+	axes[0].set_xlabel('# generations', fontsize=14)
+	axes[1].set_xlabel('# generations', fontsize=14)
+
+	axes[0].set_ylabel(r'objective function, $f(\mathbf{x})$', fontsize=14)
+	axes[1].set_ylabel(r'objective function, $f(\mathbf{x})$', fontsize=14)
 
 	plt.tight_layout()
 	plt.show()

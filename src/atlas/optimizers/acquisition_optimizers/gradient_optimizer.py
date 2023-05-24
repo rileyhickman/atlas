@@ -271,7 +271,9 @@ class GradientOptimizer(AcquisitionOptimizer):
 								for X_ in choices_batched.split(max_batch_size)
 							]
 						)
-					best_idx = torch.argmax(acq_values)
+					#best_idx = torch.argmax(acq_values)
+					best_idxs_ =  torch.argsort(acq_values, descending=True)
+					best_idx = best_idxs_[torch.randint(low=0, high=2000, size=(1,))]
 					candidate_list.append(choices_batched[best_idx])
 					acq_value_list.append(acq_values[best_idx])
 					# set pending points

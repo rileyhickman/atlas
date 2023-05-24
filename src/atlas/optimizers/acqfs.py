@@ -377,7 +377,7 @@ class FeasibilityAwareQEI(qExpectedImprovement, FeasibilityAwareAcquisition):
 
     def forward(self, X):
         acqf = super().forward(X)
-        return self.compute_combined_acqf(acqf, X)
+        return -self.compute_combined_acqf(acqf, X)
 
 
 class FeasibilityAwareEI(ExpectedImprovement, FeasibilityAwareAcquisition):
@@ -669,46 +669,64 @@ class MedusaAcquisition():
 
         return mu_sum if self.maximize else -mu_sum
 
-
     # def __call__(self, X_funcs, Gs):
     #     """ dummy acquisition evaluation """
     #     return np.random.uniform(size=None)
 
     # TODO: need to extend this to batched case
-    def acqf_var(self, X_funcs_deindex, G):
+    def acqf_var(self, X_funcs_deindex, G, X_funcs_cat):
         """ variance-based sampling over all potential options
         """
-    
         sigmas = []
         all_options_raw = []
-        for X, S in zip(X_funcs_deindex, G):
-            for si in S:
-                #print(f'X : {X}\t si : {si}')
-                all_options_raw.append([X, si])
-                # produce the option
-                opt = deepcopy(self.X_sns_empty[si])
-                # print(opt.shape)
-                # print(X.shape)
-                # print(opt[:,self.functional_dims].shape)
-                opt[:,self.functional_dims] = torch.tensor(X)
+        if X_funcs_cat is not None: 
+            # have some categorical functional parameters
+            all_options_cat = []
+            for X, S, X_cat in zip(X_funcs_deindex, G, X_funcs_cat):
+                for si in S:
+                    # print('si :', si)
+                    # print('X :', X)
+                    # print('G :', G)
+                    # print('X_cat :', X_cat)
+    
+                    all_options_raw.append([X, si])
+                    all_options_cat.append([X_cat, si])
+                    # produce the option
+                    opt = deepcopy(self.X_sns_empty[si])
+                    opt[:,self.functional_dims] = torch.tensor(X)
 
-                #print('opt : ', opt)
+                    #print('opt :', opt)
+                    
+                    # make prediction with regression surrogate model
+                    posterior = self.reg_model.posterior(opt.double())
+                    sigma = posterior.variance.clamp_min(1e-9).sqrt()
+                    sigmas.append(sigma.detach().numpy().item())
 
-                # make prediction with regression surrogate model
-                posterior = self.reg_model.posterior(opt.double())
-                sigma = posterior.variance.clamp_min(1e-9).sqrt()
+            # get the index of the largest sigma --> most uncertain
+            select_idx = np.argmax(sigmas)
+            select_option = all_options_cat[select_idx]
 
-                #print('sigma : ', sigma)
+        else: 
+            # continuous and/or discrete functional parameters
 
-                sigmas.append(sigma.detach().numpy().item())
+            for X, S in zip(X_funcs_deindex, G):
+                for si in S:
+                    all_options_raw.append([X, si])
+                    # produce the option
+                    opt = deepcopy(self.X_sns_empty[si])
+                    opt[:,self.functional_dims] = torch.tensor(X)
+                    # make prediction with regression surrogate model
+                    posterior = self.reg_model.posterior(opt.double())
+                    sigma = posterior.variance.clamp_min(1e-9).sqrt()
+                    sigmas.append(sigma.detach().numpy().item())
 
-        #print('sigmas : ', sigmas)
-        # get the index of the largest sigma
-        select_idx = np.argmax(sigmas)
-        select_option = all_options_raw[select_idx]
-        #print(select_option)
+            # get the index of the largest sigma --> most uncertain
+            select_idx = np.argmax(sigmas)
+            select_option = all_options_raw[select_idx]
+
+
+    
         return select_option[0], select_option[1] # X_func, si
-
 
 
 

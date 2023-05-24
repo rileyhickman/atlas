@@ -13,6 +13,7 @@ import olympus
 from olympus.campaigns import Campaign, ParameterSpace
 from olympus.objects import ParameterContinuous, ParameterCategorical
 from olympus.surfaces import Branin, Michalewicz, Levy, Dejong # cont
+from olympus.surfaces import CatCamel, CatMichalewicz, CatSlope, CatDejong
 from olympus.utils.misc import get_hypervolume, get_pareto_set
 
 #-----------------
@@ -21,70 +22,20 @@ from olympus.utils.misc import get_hypervolume, get_pareto_set
 
 
 # theoretical minimum
-theo_min_params = [
-	[ # Branin
-		{'params': np.array([0.12389382, 0.81833333]), 'value': 0.39788735772973816},
-		{'params': np.array([0.54277284, 0.15166667]), 'value': 0.39788735772973816}, 
-		{'params': np.array([0.961652, 0.165]), 'value': 0.39788735775266204},
-	],
-	[
-		# Dejong
-		{'params': np.array([0.5, 0.5]), 'value': 0.0}
-	],
-	[
-		# Michalewicz
-		{'params': np.array([0.70120676, 0.4999999 ]), 'value': -1.8013034100904854}
-	],
-	[
-		# Levy
-		{'params': np.array([0.55, 0.55]), 'value': 1.4997597826618576e-32}
-	],
-]
-
-theo_min_val = -1.4034160523607473
+theo_min_val = 10.376134992768257
 
 # theoretical maximum
-theo_max_val = 308.129+4.72+0.+150.
+theo_max_val = 1175137.5265374675
 
 # w_ref for hypervolume computation
 w_ref = np.array([theo_max_val, 4. ])
 
 # estimated best vals
-
-est_best_dict = {
-					1: {
-						'G': [[0, 1, 2, 3]],
-						'X_func': np.array([[0.52986536, 0.24390908]]),
-						'f_x': 6.800270000320467
-					},
-					2: {
-						'G': [[0], [1, 2, 3]],
-						'X_func': np.array([[0.95126962, 0.13396389],
-								  [0.51074837, 0.50608643]]),
-						'f_x': 0.7368735958997857}
-					,
-					3: {
-						'G': [[0], [1, 2], [3]],
-						'X_func': np.array([[0.97038967, 0.15323792],
-								[0.40699327, 0.48506922],
-								[0.54527206, 0.57068025]]),
-						'f_x': 1.021902483359942
-					},
-					4: {
-						'G': [[0], [1], [2], [3]],
-						'X_func': np.array([[0.56051091, 0.09369598],
-							[0.44796786, 0.39556352],
-							[0.66549864, 0.49774986],
-							[0.54350259, 0.51359794]]),
-						'f_x': 1.382150783615172
-						}
-				}
-
 est_best_objs = np.array([
-	[ 6.800270000320467, 1.],
-	[0.7368735958997857, 2.],
-	[1.021902483359942, 3.],
-	[1.382150783615172, 4.]
+	[ 15.329781561557427, 1.],
+	[12.043280135625402, 2.],
+	[12.115426421339688, 3.],
+	[12.555133164698908, 4.]
 ])
 
 # hypervolume for the best case
@@ -133,8 +84,7 @@ def measure_single_obj(sample, surf_map):
 	si = int( sample.x0[2:] )
 
 	# functional params will always be x1 and x2 
-	# NOTE: these should already be floats, just making sure
-	X_func = np.array([float(sample.x1), float(sample.x2)]) 
+	X_func = np.array([sample.x1, sample.x2]) 
 
 	return surf_map[si].run(X_func)[0][0]
 
@@ -163,20 +113,19 @@ def measure_objective(xgs, G, surf_map, is_categorical):
 
 # 2d surfaces as the \Tilde{f} objective functions
 surf_map = {
-	0: Branin(),
-	1: Dejong(),
-	2: Michalewicz(),
-	3: Levy(),
+    0: CatCamel(param_dim=2, num_opts=21),
+    1: CatDejong(param_dim=2, num_opts=21),
+    2: CatMichalewicz(param_dim=2, num_opts=21),
+    3: CatSlope(param_dim=2, num_opts=21),
 }
-
 
 with_descriptors_func = False
 with_descriptors_nonfunc = False
 num_desc_nonfunc = 2 
-func_param_type = 'continuous'
+func_param_type = 'categorical'
 use_random_acqf = False
 
-budget = 50
+budget = 20
 num_init_design = 5
 repeats = 40
 random_seed = None # i.e. use a different random seed each time
@@ -209,12 +158,12 @@ def set_param_space(func_param_type='continuous'):
 			descriptors = [None for _ in range(21)]
 		x1 = ParameterCategorical(
 			name='x1',
-			options=[f'x_{i}' for i in range(21)],
+			options=[f'x{i}' for i in range(21)],
 			descriptors=descriptors,
 		)
 		x2 = ParameterCategorical(
 			name='x2',
-			options=[f'x_{i}' for i in range(21)],
+			options=[f'x{i}' for i in range(21)],
 			descriptors=descriptors,
 		)
 		# 1 categorical non-functional parameter 
@@ -250,7 +199,6 @@ for num_repeat in range(missing_repeats):
 
 	campaign = Campaign()
 	campaign.set_param_space(param_space)
-
 
 	iter=0
 	converged = False
@@ -290,7 +238,7 @@ for num_repeat in range(missing_repeats):
 							xgs=proposal['X_func'], 
 							G=proposal['G'], 
 							surf_map=surf_map,
-							is_categorical=False,
+							is_categorical=True,
 					)
 					meas_objs.append([f_x, float(Ng)])
 				meas_objs=np.array(meas_objs)
