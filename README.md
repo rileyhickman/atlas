@@ -15,7 +15,7 @@ optimization, meta-learning optimization, data-driven search space expansion/con
 `atlas` is intended serve as the brain or experiment planner for self-driving laboratories.
 
 
-`atlas` is proudly developed in :ca: at the University of Toronto, the Vector Institute for Artificial Intelligence, and Soteria Therapeutics, Inc.
+`atlas` is proudly developed in :ca: at the University of Toronto and the Vector Institute for Artificial Intelligence.
 
 
 ![alt text](https://github.com/rileyhickman/atlas/blob/main/static/atlas_logo.png)
