@@ -29,7 +29,7 @@ setup(
     packages=find_packages(where='src', include=['atlas*']),
     package_dir={"": "src"},
     zip_safe=False,
-    tests_require=["pytest"],
+    # tests_require=["pytest"],
     install_requires=["numpy", "pandas", "deap", "botorch", "matter-chimera", "matter-golem"],
     python_requires=">=3.6",
 )
