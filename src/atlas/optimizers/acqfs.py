@@ -864,6 +864,9 @@ def create_available_options(
 			current_avail_feat.append(np.concatenate(ohe))
 			current_avail_cat.append(elem)
 
+		
+		print(current_avail_feat)
+
 		current_avail_feat_unconst = np.array(current_avail_feat)
 		current_avail_cat_unconst = np.array(current_avail_cat)
 

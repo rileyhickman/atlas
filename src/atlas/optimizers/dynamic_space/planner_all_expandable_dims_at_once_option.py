@@ -231,11 +231,6 @@ class Dynamic_Flexible_Planner(BasePlanner):
 
             self.n_init_points, self.input_dim = np.shape(self.train_x_scaled_reg.detach().numpy())
 
-            # Extract Gaussian Process hyper-parameters
-            # kernel_k2 is the length-scale
-            # theta_n is the scale factor
-
-        
             # Re-arrange the initial random observations
             self.max_iter = self.iter_mul*self.input_dim
             Y_max = np.zeros((self.max_iter+self.n_init_points, 1))
@@ -380,7 +375,7 @@ class Dynamic_Flexible_Planner(BasePlanner):
                 theta_n = np.sqrt(kernel_k1)
                 kernel_k2 = temp_reg_model.covar_module.base_kernel.lengthscale.detach().numpy().item()
                 K = self.gram_matrix(self.train_x_scaled_reg[:, self.expandable_dims], kernel_k1, kernel_k2)
-                scale_l= self.compute_new_search_space2(K, self.train_y_scaled_reg.numpy(), b_n, theta_n, kernel_k1)
+                scale_l= self.compute_new_search_space(K, self.train_y_scaled_reg.numpy(), b_n, theta_n, kernel_k1)
 
                 
                 lengthscale = kernel_k2
@@ -574,7 +569,7 @@ class Dynamic_Flexible_Planner(BasePlanner):
             return True
         return False
 
-    def compute_new_search_space2(self, k, y, b_n, theta_n, kernel_k1):
+    def compute_new_search_space(self, k, y, b_n, theta_n, kernel_k1):
 
         K_inv = pinv(k)
         b = np.matmul(K_inv, y)
@@ -598,72 +593,6 @@ class Dynamic_Flexible_Planner(BasePlanner):
 
         return scale_l
     
-    def compute_new_search_space(self, k, y, x, b_n, theta_n, kernel_k1, kernel_k2, aq_init, n_iter, bounds):
-
-        K_inv = pinv(k)
-        b = np.matmul(K_inv, y)
-        b_pos = b[b >= 0]
-        b_neg = b[b <= 0]
-        U, Sigma, V = np.linalg.svd(K_inv)
-        lambda_max = np.max(Sigma)
-        n = self.train_x_scaled_reg.size(dim=0)
-    
-    
-        gamma = min(0.25*self.epsilon/max(np.sum(b_pos), -np.sum(b_neg)),
-                    1/b_n*np.sqrt((0.5*self.epsilon*b_n*theta_n-0.0625*self.epsilon**2)/(n*lambda_max)))
-        print(f"gamma: {gamma}")
-        print(f"kernel_k1: {kernel_k1}")
-        print(f"kernel_k2: {kernel_k2}")
-        
-
-        if (gamma > 1):
-            raise ValueError('Gamma needs to be smaller than 1. Something wrong!')
-        
-        scale_l = np.sqrt(-2*np.log(gamma/kernel_k1))
-
-        if np.isnan(scale_l):
-            scale_l = 2
-        print('The scale is: {}'.format(scale_l))
-
-        bounds_ori_all = []
-        for n_obs in range(len(aq_init)):
-            X0 = x[n_obs]
-            # Set the rectangle bounds
-            bounds_ori_temp = np.asarray((X0 - scale_l*kernel_k2,
-                                            X0 + scale_l*kernel_k2))
-            bounds_ori = bounds_ori_temp.T
-            bounds_ori_all.append(bounds_ori)
-
-        self.bound_len = scale_l*kernel_k2
-        temp = np.asarray(bounds_ori_all)
-
-        temp_min = np.min(temp[:, :, 0], axis=0)
-        temp_max = np.max(temp[:, :, 1], axis=0)
-
-        bounds_ori = np.stack((temp_min, temp_max)).T
-        bounds_new = bounds_ori.copy()
-
-        print('Old bound: {}'.format(bounds))
-        print('New bound: {}'.format(bounds_new))
-  
-
-        new_func_parameter_space = ParameterSpace()
-        param_names = self.func_param_space.param_names
-
-        for idx in range(self.input_dim):
-            new_func_parameter_space.add(
-                ParameterContinuous(
-                    name=param_names[idx],
-                    low = bounds_new[idx][0],
-                    high = bounds_new[idx][1]
-                )
-            )
-        self.func_param_space = new_func_parameter_space
-
-
-        # Adjust iteration after adjusting bounds
-        self.iter_adjust += (n_iter - 1)
-        return bounds_new, scale_l, self.bound_len, n_iter
     
     def get_aqcf_min_max(
         self,

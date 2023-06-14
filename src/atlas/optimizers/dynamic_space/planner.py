@@ -82,7 +82,7 @@ from sklearn.preprocessing import normalize
 
 
 class DynamicSSPlanner(BasePlanner):
-    """Wrapper for GP-based Bayesiam optimization using a dynamic search space bzsed on Ha et al.
+    """Wrapper for GP-based Bayesian optimization using a dynamic search space bzsed on Ha et al.
     Args:
             goal (str): the optimization goal, "maximize" or "minimize"
             feas_strategy (str): feasibility acqusition function name
@@ -667,10 +667,6 @@ class DynamicSSPlanner(BasePlanner):
         U, Sigma, V = np.linalg.svd(K_inv)
         lambda_max = np.max(Sigma)
         n = self.train_x_scaled_reg.size(dim=0)
-
-        
-        #print(f"theta N (scale factor):  {theta_n}")
-    
     
         gamma = min(0.25*self.epsilon/max(np.sum(b_pos), -np.sum(b_neg)),
                     1/b_n*np.sqrt((0.5*self.epsilon*b_n*theta_n-0.0625*self.epsilon**2)/(n*lambda_max)))
