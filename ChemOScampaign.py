@@ -62,10 +62,8 @@ value_space = ParameterSpace()
 value_space.add(ParameterContinuous(name='Simulation gain'))
 value_space.add(ParameterContinuous(name='Experimental gain'))
 
-
-campaign = Campaign()
-campaign.set_param_space(param_space)
-
+campaign.add_observation(["C001"],np.array([1.869E-16, 1e-17]))
+campaign.add_observation(["C004"],np.array([0.672E-16, 2e-16]))
 
 
 planner = TanimotoPlanner(
@@ -103,9 +101,8 @@ while len(campaign.values) < BUDGET:
         # measurement = surface.run(
         #     sample_arr.reshape((1, sample_arr.shape[0]))
         # )
-        
-        campaign.add_observation(sample_arr, np.array([15,63]))
-
+    
+        print(sample_arr)
         print(campaign.params)
         print(campaign.values)
 

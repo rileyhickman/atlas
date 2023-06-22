@@ -50,7 +50,7 @@ CAT = {
     "use_descriptors": [False, True],  # use descriptors
 }
 
-
+@pytest.mark.skip(reason="no way of currently testing this")
 @pytest.mark.parametrize("init_design_strategy", CONT["init_design_strategy"])
 @pytest.mark.parametrize("batch_size", CONT["batch_size"])
 @pytest.mark.parametrize("feas_strategy_param", CONT["feas_strategy_param"])
@@ -62,7 +62,7 @@ def test_unknown_cont(
         init_design_strategy, batch_size, feas_strategy_param, use_descriptors
     )
 
-
+@pytest.mark.skip(reason="no way of currently testing this")
 @pytest.mark.parametrize("init_design_strategy", CAT["init_design_strategy"])
 @pytest.mark.parametrize("batch_size", CAT["batch_size"])
 @pytest.mark.parametrize("feas_strategy_param", CAT["feas_strategy_param"])

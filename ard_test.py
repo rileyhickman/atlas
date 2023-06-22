@@ -15,7 +15,7 @@ from olympus.campaigns import ParameterSpace
 from olympus.planners import AbstractPlanner, CustomPlanner, Planner
 from olympus.scalarizers import Scalarizer
 from atlas.optimizers.base import BasePlanner
-from atlas.optimizers.dynamic_space.planner_all_expandable_dims_at_once_option import Dynamic_Flexible_Planner
+from atlas.optimizers.dynamic_space.planner_ard import Dynamic_Flexible_Planner
 
 from atlas import Logger
 from atlas.optimizers.params import Parameters, ParameterContinuous
@@ -157,10 +157,10 @@ while run_ix < NUM_RUNS:
         goal="maximize",
         feas_strategy="naive-0",
         init_design_strategy="lhs",
-        expandable_dims=[0,1],
         num_init_design=n_init_points,
         batch_size=1,
-        use_descriptors=False
+        use_descriptors=False,
+        expandable_dims=[0,2]
     )
 
     planner.set_param_space(campaign.param_space, init_func_param_space)
@@ -193,7 +193,7 @@ while run_ix < NUM_RUNS:
                         "values": campaign.values,
                     },
                     open(
-                        f"atlasruns/bootleghartman/run_{model_kind}_{SURFACE_KIND}_29.pkl",
+                        f"ard_tests/run_{model_kind}_{SURFACE_KIND}.pkl",
                         "wb",
                     ),
                 )
