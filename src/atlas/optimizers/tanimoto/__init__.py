@@ -1,1 +1,1 @@
-from .tanimoto import TanimotoPlanner
+from .planner import TanimotoPlanner

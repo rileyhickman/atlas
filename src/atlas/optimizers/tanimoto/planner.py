@@ -134,8 +134,7 @@ class TanimotoPlanner(BasePlanner):
             "fully_discrete",
             "mixed_disc_cont",
         ]:
-            kernel = TanimotoKernel()
-            model = SingleTaskGP(train_x, train_y, covar_module=kernel)
+            raise NotImplementedError
         elif self.problem_type == "fully_categorical":
             if self.has_descriptors:
                 print("using tanimoto kernel")

@@ -22,6 +22,9 @@ setup(
         "Intended Audience :: Science/Research",
         "Topic :: Scientific/Engineering",
     ],
+
+
+    
     url="https://github.com/rileyhickman/atlas",
     author="Riley Hickman",
     author_email="riley.hickman@mail.utoronto.ca",
